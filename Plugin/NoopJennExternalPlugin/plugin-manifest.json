@@ -1,0 +1,29 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "NoopJennExternalPlugin",
+  "displayName": "No-op Jenn External Plugin Placeholder",
+  "version": "0.0.0-gate14",
+  "description": "Gate 14 inert external placeholder used only to prove Jenn external package plugin shape. It is not migrated code, does not declare secrets, does not depend on external services, does not write LocalState, does not perform image generation, does not register provider execution, and is not production ready.",
+  "author": "AGENTS_OS Gate 14",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node index.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 5000
+  },
+  "configSchema": {},
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "HealthCheck",
+        "description": "Return inert Gate 14 placeholder metadata only. No filesystem writes, network calls, child processes, provider calls, LocalState access, or runtime activation."
+      }
+    ]
+  },
+  "lifecycle": {},
+  "gate14Placeholder": true,
+  "productionReady": false
+}

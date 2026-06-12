@@ -1,0 +1,76 @@
+# JennAIGentOrchestrator
+
+Gate 23 renamed external parallel candidate.
+
+This directory is a renamed external copy trial derived from the sealed external AIGentOrchestrator source.
+
+Boundary:
+- Not active.
+- Not discovered in Gate 23.
+- Not executed.
+- No processToolCall.
+- No server/provider startup.
+- No Plugin Store live operation.
+- Core AIGentOrchestrator remains preserved.
+- Sealed external AIGentOrchestrator remains preserved.
+- Future discovery/execution requires separate authorization.
+
+---
+# AIGentOrchestrator - Multi-Agent Orchestrator
+
+**Version**: 0.1.0
+**Stage**: Multi-agent dry-run planner
+**Safety boundary**: builds orchestration plans only; does not call downstream plugins, generation workflows, training or external services.
+
+## Goal
+
+AIGentOrchestrator starts stage 5 of the AI image agent plan. It coordinates the contracts between:
+
+- `AIGentPrompt`: prompt generation
+- `AIGentWorkflow`: generation workflow planning
+- `AIGentStyle`: optional StyleTrainer preparation
+- `AIGentQuality`: quality inspection and retry routing
+
+The current implementation returns JSON plans. It is deliberately not an executor.
+
+Stable output semantics and future execution safety gates are documented in `docs/AI_IMAGE_ORCHESTRATION_CONTRACT.md`.
+Plans include `state_plan` and `audit_plan` sections for future UI/executor integration, but this stage does not persist audit logs.
+
+## Commands
+
+### PlanImagePipeline
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentOrchestrator「末」
+tool_name:「始」PlanImagePipeline「末」
+user_input:「始」Generate an ecommerce dress product image「末」
+include_style_training:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+### PlanRetryPipeline
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentOrchestrator「末」
+tool_name:「始」PlanRetryPipeline「末」
+retry_plan:「始」{ "retry_queue": [] }「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+### HealthCheck
+
+```text
+<<<[TOOL_REQUEST]>>>
+maid:「始」AIGentOrchestrator「末」
+tool_name:「始」HealthCheck「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+## Safety Notes
+
+- `AIGENT_ORCHESTRATOR_ALLOW_EXECUTION=false` is the stage 5 default.
+- `execute_pipeline=true` alone is not enough for future execution.
+- Future real execution must also require `confirm_external_effects=true`.
+- This stage never invokes `AIGentWorkflow`, `ComfyUIGen`, StyleTrainer training or QualityInspector external vision checks.
