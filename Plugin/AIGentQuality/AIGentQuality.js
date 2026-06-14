@@ -8,6 +8,7 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp']);
 const JPEG_SOF_MARKERS = new Set([
   0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf
 ]);
+const MAX_DIMENSION_HEADER_BYTES = 1024 * 1024;
 
 const CONFIG = {
   minimumWidth: Number(process.env.AIGENT_QUALITY_MIN_WIDTH || 512),
@@ -39,8 +40,20 @@ function readJsonFromStdin() {
   });
 }
 
-function readImageDimensions(imagePath) {
-  const buffer = fs.readFileSync(imagePath);
+function readImageHeader(imagePath, stat = fs.statSync(imagePath)) {
+  const bytesToRead = Math.min(stat.size, MAX_DIMENSION_HEADER_BYTES);
+  const buffer = Buffer.alloc(bytesToRead);
+  const fd = fs.openSync(imagePath, 'r');
+  try {
+    const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function readImageDimensions(imagePath, stat) {
+  const buffer = readImageHeader(imagePath, stat);
   const ext = path.extname(imagePath).toLowerCase();
 
   try {
@@ -272,7 +285,17 @@ function inspectImage(request) {
     });
   }
 
-  const dimensions = readImageDimensions(imagePath);
+  const maxBytes = CONFIG.maxFileSizeMb * 1024 * 1024;
+  if (stat.size > maxBytes) {
+    findings.push({
+      id: 'large_file',
+      severity: 'minor',
+      dimension: 'file_integrity',
+      message: `file is larger than ${CONFIG.maxFileSizeMb}MB`
+    });
+  }
+
+  const dimensions = readImageDimensions(imagePath, stat);
   if (!dimensions.width || !dimensions.height) {
     findings.push({
       id: 'unreadable_dimensions',
@@ -299,16 +322,6 @@ function inspectImage(request) {
         message: `extreme aspect ratio ${aspectRatio.toFixed(2)} may need manual review`
       });
     }
-  }
-
-  const maxBytes = CONFIG.maxFileSizeMb * 1024 * 1024;
-  if (stat.size > maxBytes) {
-    findings.push({
-      id: 'large_file',
-      severity: 'minor',
-      dimension: 'file_integrity',
-      message: `file is larger than ${CONFIG.maxFileSizeMb}MB`
-    });
   }
 
   const prompt = String(request.prompt || request.caption || '').toLowerCase();
