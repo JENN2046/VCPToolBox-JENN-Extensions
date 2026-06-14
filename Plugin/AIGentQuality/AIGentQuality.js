@@ -252,6 +252,13 @@ function buildWorkflowAdvice(report) {
       reason: 'review crop, bucket or canvas settings before retry'
     });
   }
+  if (findingIds.has('large_file')) {
+    actions.push({
+      action: 'manual_review',
+      priority: 'medium',
+      reason: 'file exceeds configured size limit and should be reviewed before publishing'
+    });
+  }
   if (findingIds.has('compliance_keyword_review')) {
     actions.push({
       action: 'manual_compliance_review',
@@ -268,10 +275,44 @@ function buildWorkflowAdvice(report) {
     });
   }
 
+  const requiresManualReview = actions.some((action) => {
+    return action.action === 'manual_review'
+      || action.action === 'manual_compliance_review'
+      || action.action === 'adjust_workflow';
+  });
+  const route = requiresManualReview
+    ? 'manual_review'
+    : report.verdict === 'pass'
+      ? 'accept'
+      : report.verdict === 'review'
+        ? 'manual_review'
+        : 'retry_or_reject';
+
   return {
-    route: report.verdict === 'pass' ? 'accept' : report.verdict === 'review' ? 'manual_review' : 'retry_or_reject',
+    route,
     actions
   };
+}
+
+function needsRetryOrReview(report) {
+  return report.verdict !== 'pass' || report.workflow_advice.route !== 'accept';
+}
+
+function queueEntryFromReport(report) {
+  return {
+    image_path: report.image_path,
+    filename: report.filename,
+    verdict: report.verdict,
+    score: report.score,
+    route: report.workflow_advice.route,
+    actions: report.workflow_advice.actions
+  };
+}
+
+function overallVerdictFromReport(report) {
+  return needsRetryOrReview(report) && report.verdict === 'pass'
+    ? 'review'
+    : report.verdict;
 }
 
 function inspectImage(request) {
@@ -413,15 +454,8 @@ function inspectBatch(request) {
     return counts;
   }, {});
   const retryQueue = reports
-    .filter((report) => report.verdict !== 'pass')
-    .map((report) => ({
-      image_path: report.image_path,
-      filename: report.filename,
-      verdict: report.verdict,
-      score: report.score,
-      route: report.workflow_advice.route,
-      actions: report.workflow_advice.actions
-    }));
+    .filter(needsRetryOrReview)
+    .map(queueEntryFromReport);
   const verdict = aggregateBatchVerdict(score, reports, retryQueue);
 
   return {
@@ -443,21 +477,14 @@ function buildRetryPlan(request) {
   const isBatch = Boolean(report.reports);
   const retryQueue = isBatch
     ? report.retry_queue
-    : report.verdict === 'pass'
+    : !needsRetryOrReview(report)
       ? []
-      : [{
-          image_path: report.image_path,
-          filename: report.filename,
-          verdict: report.verdict,
-          score: report.score,
-          route: report.workflow_advice.route,
-          actions: report.workflow_advice.actions
-        }];
+      : [queueEntryFromReport(report)];
 
   return {
     dry_run: true,
     source: isBatch ? 'batch' : 'single_image',
-    overall_verdict: report.verdict,
+    overall_verdict: isBatch ? report.verdict : overallVerdictFromReport(report),
     retry_count: retryQueue.length,
     retry_queue: retryQueue,
     safety: {
