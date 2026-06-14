@@ -1,12 +1,15 @@
-# AIGentQuality - QualityInspector
+# JennAIGentQuality - QualityInspector
 
 **Version**: 0.1.0
 **Stage**: QualityInspector prototype
 **Safety boundary**: rule-based dry-run only; no external vision model, no OCR service and no real moderation provider call.
+**External package name**: `JennAIGentQuality`
+**Core compatibility note**: this external copy intentionally does not publish
+the core plugin name `AIGentQuality` from the external discovery root.
 
 ## Goal
 
-AIGentQuality starts stage 4 of the AI image agent plan. It gives the pipeline a local quality gate that can inspect generated images before later human review, retry orchestration or model-based inspection.
+JennAIGentQuality is the external package form of the stage 4 AI image quality gate. It can inspect generated images before later human review, retry orchestration or model-based inspection.
 
 Current prototype checks:
 
@@ -28,7 +31,7 @@ Stable output semantics for downstream workflow and multi-agent consumers are do
 
 ```text
 <<<[TOOL_REQUEST]>>>
-maid:「始」AIGentQuality「末」
+maid:「始」JennAIGentQuality「末」
 tool_name:「始」InspectImage「末」
 image_path:「始」A:/path/to/image.png「末」
 caption:「始」product photo, clean background「末」
@@ -39,7 +42,7 @@ caption:「始」product photo, clean background「末」
 
 ```text
 <<<[TOOL_REQUEST]>>>
-maid:「始」AIGentQuality「末」
+maid:「始」JennAIGentQuality「末」
 tool_name:「始」InspectBatch「末」
 directory:「始」A:/path/to/generated-images「末」
 <<<[END_TOOL_REQUEST]>>>
@@ -51,7 +54,7 @@ Build a dry-run retry/manual-review plan from a single image or a directory. Thi
 
 ```text
 <<<[TOOL_REQUEST]>>>
-maid:「始」AIGentQuality「末」
+maid:「始」JennAIGentQuality「末」
 tool_name:「始」BuildRetryPlan「末」
 directory:「始」A:/path/to/generated-images「末」
 <<<[END_TOOL_REQUEST]>>>
@@ -61,7 +64,7 @@ directory:「始」A:/path/to/generated-images「末」
 
 ```text
 <<<[TOOL_REQUEST]>>>
-maid:「始」AIGentQuality「末」
+maid:「始」JennAIGentQuality「末」
 tool_name:「始」HealthCheck「末」
 <<<[END_TOOL_REQUEST]>>>
 ```

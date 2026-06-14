@@ -1,9 +1,9 @@
 {
   "manifestVersion": "1.0.0",
-  "name": "AIGentQuality",
-  "displayName": "AI Image QualityInspector",
+  "name": "JennAIGentQuality",
+  "displayName": "Jenn AI Image QualityInspector",
   "version": "0.1.0",
-  "description": "QualityInspector Agent prototype for rule-based image quality, compliance and readiness inspection. Stage 4 is dry-run only and does not call external vision models.",
+  "description": "Jenn external QualityInspector Agent prototype for rule-based image quality, compliance and readiness inspection. Stage 4 is dry-run only and does not call external vision models.",
   "author": "VCPToolBox Team",
   "pluginType": "synchronous",
   "entryPoint": {

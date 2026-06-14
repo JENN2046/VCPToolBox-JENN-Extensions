@@ -282,6 +282,8 @@ function buildWorkflowAdvice(report) {
   });
   const route = requiresManualReview
     ? 'manual_review'
+    : actions.some((action) => action.action === 'retry_generation')
+      ? 'retry_generation'
     : report.verdict === 'pass'
       ? 'accept'
       : report.verdict === 'review'
@@ -346,7 +348,7 @@ function inspectImage(request) {
   if (stat.size > maxBytes) {
     findings.push({
       id: 'large_file',
-      severity: 'minor',
+      severity: 'major',
       dimension: 'file_integrity',
       message: `file is larger than ${CONFIG.maxFileSizeMb}MB`
     });
