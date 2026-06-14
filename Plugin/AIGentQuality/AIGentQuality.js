@@ -53,10 +53,11 @@ function readImageHeader(imagePath, stat = fs.statSync(imagePath)) {
 }
 
 function readImageDimensions(imagePath, stat) {
-  const buffer = readImageHeader(imagePath, stat);
   const ext = path.extname(imagePath).toLowerCase();
 
   try {
+    const buffer = readImageHeader(imagePath, stat);
+
     if (ext === '.png' && buffer.length >= 24 && buffer.toString('ascii', 1, 4) === 'PNG') {
       return {
         width: buffer.readUInt32BE(16),
@@ -186,6 +187,16 @@ function verdictFromScore(score) {
     return 'review';
   }
   return 'reject';
+}
+
+function aggregateBatchVerdict(score, reports, retryQueue) {
+  if (reports.some((report) => report.verdict === 'reject')) {
+    return 'reject';
+  }
+  if (reports.some((report) => report.verdict === 'review') || retryQueue.length > 0) {
+    return 'review';
+  }
+  return verdictFromScore(score);
 }
 
 function dimensionScoresFromFindings(findings) {
@@ -411,13 +422,14 @@ function inspectBatch(request) {
       route: report.workflow_advice.route,
       actions: report.workflow_advice.actions
     }));
+  const verdict = aggregateBatchVerdict(score, reports, retryQueue);
 
   return {
     directory,
     dry_run: true,
     image_count: images.length,
     average_score: score,
-    verdict: verdictFromScore(score),
+    verdict,
     verdict_counts: verdictCounts,
     retry_queue: retryQueue,
     reports
