@@ -264,10 +264,15 @@ function buildWorkflowAdvice(report) {
 }
 
 function inspectImage(request) {
-  const imagePath = path.resolve(String(request.image_path || request.path || ''));
+  const imagePathInput = request.image_path ?? request.path;
+  if (imagePathInput === undefined || imagePathInput === null || String(imagePathInput).trim() === '') {
+    throw new Error('image_path is required');
+  }
+
+  const imagePath = path.resolve(String(imagePathInput).trim());
   const findings = [];
 
-  if (!imagePath || imagePath === path.parse(imagePath).root) {
+  if (imagePath === path.parse(imagePath).root) {
     throw new Error('image_path is required');
   }
   if (!fs.existsSync(imagePath)) {
@@ -334,14 +339,12 @@ function inspectImage(request) {
     });
   }
 
-  if (!CONFIG.externalVisionEnabled) {
-    findings.push({
-      id: 'vision_model_not_enabled',
-      severity: 'info',
-      dimension: 'validation_limit',
-      message: 'rule-based prototype only; no external vision model was called'
-    });
-  }
+  findings.push({
+    id: 'vision_model_not_enabled',
+    severity: 'info',
+    dimension: 'validation_limit',
+    message: 'rule-based prototype only; no external vision model was called'
+  });
 
   const score = scoreFromFindings(findings);
   const report = {
