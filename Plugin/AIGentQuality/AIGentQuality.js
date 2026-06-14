@@ -359,10 +359,16 @@ function buildRecommendations(findings) {
 }
 
 function inspectBatch(request) {
-  const directory = path.resolve(String(request.directory || request.dataset_path || ''));
-  if (!directory || directory === path.parse(directory).root) {
+  const directoryInput = request.directory ?? request.dataset_path;
+  if (directoryInput === undefined || directoryInput === null || String(directoryInput).trim() === '') {
     throw new Error('directory or dataset_path is required');
   }
+
+  const directory = path.resolve(String(directoryInput).trim());
+  if (directory === path.parse(directory).root) {
+    throw new Error('directory or dataset_path is required');
+  }
+
   if (!fs.existsSync(directory)) {
     throw new Error(`directory not found: ${directory}`);
   }
