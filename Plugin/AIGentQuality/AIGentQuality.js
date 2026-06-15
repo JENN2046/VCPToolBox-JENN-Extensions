@@ -487,10 +487,54 @@ function inspectImage(request) {
   return report;
 }
 
+function reportImageError(imagePath, error) {
+  const findings = [
+    {
+      id: 'file_read_error',
+      severity: 'critical',
+      dimension: 'file_integrity',
+      message: error.message
+    },
+    {
+      id: 'unreadable_dimensions',
+      severity: 'major',
+      dimension: 'file_integrity',
+      message: 'image could not be inspected'
+    },
+    {
+      id: 'vision_model_not_enabled',
+      severity: 'info',
+      dimension: 'validation_limit',
+      message: 'rule-based prototype only; no external vision model was called'
+    }
+  ];
+  const score = scoreFromFindings(findings);
+  const report = {
+    image_path: imagePath,
+    filename: path.basename(imagePath),
+    dry_run: true,
+    dimensions: {
+      width: null,
+      height: null,
+      format: path.extname(imagePath).replace('.', '').toLowerCase() || 'unknown',
+      error: error.message
+    },
+    size_bytes: null,
+    score,
+    verdict: verdictFromScore(score),
+    dimension_scores: dimensionScoresFromFindings(findings),
+    findings,
+    recommendations: buildRecommendations(findings)
+  };
+  report.workflow_advice = buildWorkflowAdvice(report);
+  return report;
+}
+
 function buildRecommendations(findings) {
   const ids = new Set(findings.map((finding) => finding.id));
   return [
     ...(ids.has('low_resolution') ? ['regenerate at a higher resolution or use an upscale workflow'] : []),
+    ...(ids.has('file_read_error') ? ['verify the image path exists and is readable'] : []),
     ...(ids.has('non_regular_file') ? ['verify the image path points to a regular file'] : []),
     ...(ids.has('unreadable_dimensions') ? ['verify the image file is complete and supported'] : []),
     ...(ids.has('extreme_aspect_ratio') ? ['review crop/bucket settings before publishing'] : []),
@@ -515,10 +559,16 @@ function inspectBatch(request) {
   }
 
   const images = walkImages(directory);
-  const reports = images.map((imagePath) => inspectImage({
-    ...request,
-    image_path: imagePath
-  }));
+  const reports = images.map((imagePath) => {
+    try {
+      return inspectImage({
+        ...request,
+        image_path: imagePath
+      });
+    } catch (error) {
+      return reportImageError(imagePath, error);
+    }
+  });
   const score = reports.length
     ? Math.round(reports.reduce((total, report) => total + report.score, 0) / reports.length)
     : 0;
