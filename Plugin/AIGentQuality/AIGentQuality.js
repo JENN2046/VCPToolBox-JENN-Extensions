@@ -280,9 +280,10 @@ function buildWorkflowAdvice(report) {
       || action.action === 'manual_compliance_review'
       || action.action === 'adjust_workflow';
   });
+  const hasRetryGeneration = actions.some((action) => action.action === 'retry_generation');
   const route = requiresManualReview
     ? 'manual_review'
-    : actions.some((action) => action.action === 'retry_generation')
+    : hasRetryGeneration
       ? 'retry_generation'
     : report.verdict === 'pass'
       ? 'accept'
@@ -383,8 +384,11 @@ function inspectImage(request) {
     }
   }
 
-  const prompt = String(request.prompt || request.caption || '').toLowerCase();
-  if (/\b(logo|trademark|copyright|watermark)\b/.test(prompt)) {
+  const complianceText = [request.prompt, request.caption]
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => String(value).toLowerCase())
+    .join('\n');
+  if (/\b(logo|trademark|copyright|watermark)\b/.test(complianceText)) {
     findings.push({
       id: 'compliance_keyword_review',
       severity: 'minor',
