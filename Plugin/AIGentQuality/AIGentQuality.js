@@ -600,7 +600,8 @@ function inspectBatch(request) {
 }
 
 function buildRetryPlan(request) {
-  const report = request.image_path || request.path
+  const imagePathInput = firstNonBlankValue(request.image_path, request.path);
+  const report = imagePathInput !== undefined
     ? inspectImage(request)
     : inspectBatch(request);
   const isBatch = Boolean(report.reports);
