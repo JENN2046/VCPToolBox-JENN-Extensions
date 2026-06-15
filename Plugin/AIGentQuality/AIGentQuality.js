@@ -5,15 +5,41 @@ const fs = require('fs');
 const path = require('path');
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp']);
+const BATCH_IMAGE_LIKE_EXTENSIONS = new Set([
+  ...IMAGE_EXTENSIONS,
+  '.avif',
+  '.gif',
+  '.heic',
+  '.heif',
+  '.tif',
+  '.tiff'
+]);
 const JPEG_SOF_MARKERS = new Set([
   0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf
 ]);
 const MAX_DIMENSION_HEADER_BYTES = 1024 * 1024;
+const CONFIG_WARNINGS = [];
+
+function parseFiniteConfigNumber(name, fallback, options = {}) {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || String(rawValue).trim() === '') {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  const min = options.min;
+  if (!Number.isFinite(parsed) || (min !== undefined && parsed < min)) {
+    CONFIG_WARNINGS.push(`${name} is invalid; using ${fallback}`);
+    return fallback;
+  }
+
+  return parsed;
+}
 
 const CONFIG = {
-  minimumWidth: Number(process.env.AIGENT_QUALITY_MIN_WIDTH || 512),
-  minimumHeight: Number(process.env.AIGENT_QUALITY_MIN_HEIGHT || 512),
-  maxFileSizeMb: Number(process.env.AIGENT_QUALITY_MAX_FILE_SIZE_MB || 50),
+  minimumWidth: parseFiniteConfigNumber('AIGENT_QUALITY_MIN_WIDTH', 512, { min: 1 }),
+  minimumHeight: parseFiniteConfigNumber('AIGENT_QUALITY_MIN_HEIGHT', 512, { min: 1 }),
+  maxFileSizeMb: parseFiniteConfigNumber('AIGENT_QUALITY_MAX_FILE_SIZE_MB', 50, { min: 0 }),
   externalVisionEnabled: String(process.env.AIGENT_QUALITY_EXTERNAL_VISION || 'false').toLowerCase() === 'true'
 };
 
@@ -153,7 +179,7 @@ function walkImages(directory) {
         stack.push(fullPath);
         continue;
       }
-      if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      if (entry.isFile() && BATCH_IMAGE_LIKE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         results.push(fullPath);
       }
     }
@@ -546,7 +572,9 @@ async function handleRequest(request) {
           minimum_height: CONFIG.minimumHeight,
           max_file_size_mb: CONFIG.maxFileSizeMb,
           external_vision_enabled: CONFIG.externalVisionEnabled,
-          supported_image_extensions: Array.from(IMAGE_EXTENSIONS)
+          supported_image_extensions: Array.from(IMAGE_EXTENSIONS),
+          batch_image_like_extensions: Array.from(BATCH_IMAGE_LIKE_EXTENSIONS),
+          config_warnings: CONFIG_WARNINGS
         }
       };
 
