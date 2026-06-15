@@ -223,6 +223,32 @@ function dimensionScoresFromFindings(findings) {
   }));
 }
 
+function routeForWorkflowAdvice(report, actions) {
+  const actionNames = new Set(actions.map((action) => action.action));
+
+  if (
+    actionNames.has('manual_review')
+    || actionNames.has('manual_compliance_review')
+    || actionNames.has('adjust_workflow')
+  ) {
+    return 'manual_review';
+  }
+
+  if (actionNames.has('retry_generation')) {
+    return 'retry_generation';
+  }
+
+  if (report.verdict === 'pass') {
+    return 'accept';
+  }
+
+  if (report.verdict === 'review') {
+    return 'manual_review';
+  }
+
+  return 'retry_or_reject';
+}
+
 function buildWorkflowAdvice(report) {
   const findingIds = new Set(report.findings.map((finding) => finding.id));
   const actions = [];
@@ -275,24 +301,8 @@ function buildWorkflowAdvice(report) {
     });
   }
 
-  const requiresManualReview = actions.some((action) => {
-    return action.action === 'manual_review'
-      || action.action === 'manual_compliance_review'
-      || action.action === 'adjust_workflow';
-  });
-  const hasRetryGeneration = actions.some((action) => action.action === 'retry_generation');
-  const route = requiresManualReview
-    ? 'manual_review'
-    : hasRetryGeneration
-      ? 'retry_generation'
-    : report.verdict === 'pass'
-      ? 'accept'
-      : report.verdict === 'review'
-        ? 'manual_review'
-        : 'retry_or_reject';
-
   return {
-    route,
+    route: routeForWorkflowAdvice(report, actions),
     actions
   };
 }
