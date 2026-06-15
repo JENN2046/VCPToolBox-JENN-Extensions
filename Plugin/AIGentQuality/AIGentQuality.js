@@ -84,7 +84,17 @@ function readImageDimensions(imagePath, stat) {
   try {
     const buffer = readImageHeader(imagePath, stat);
 
-    if (ext === '.png' && buffer.length >= 24 && buffer.toString('ascii', 1, 4) === 'PNG') {
+    if (
+      ext === '.png'
+      && buffer.length >= 24
+      && buffer[0] === 0x89
+      && buffer.toString('ascii', 1, 4) === 'PNG'
+      && buffer[4] === 0x0d
+      && buffer[5] === 0x0a
+      && buffer[6] === 0x1a
+      && buffer[7] === 0x0a
+      && buffer.toString('ascii', 12, 16) === 'IHDR'
+    ) {
       return {
         width: buffer.readUInt32BE(16),
         height: buffer.readUInt32BE(20),
