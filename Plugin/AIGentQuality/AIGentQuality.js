@@ -189,7 +189,7 @@ function walkImages(directory) {
         stack.push(fullPath);
         continue;
       }
-      if (entry.isFile() && BATCH_IMAGE_LIKE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      if (!entry.isDirectory() && BATCH_IMAGE_LIKE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         results.push(fullPath);
       }
     }
