@@ -66,6 +66,12 @@ function readJsonFromStdin() {
   });
 }
 
+function firstNonBlankValue(...values) {
+  return values.find((value) => {
+    return value !== undefined && value !== null && String(value).trim() !== '';
+  });
+}
+
 function readImageHeader(imagePath, stat = fs.statSync(imagePath)) {
   const bytesToRead = Math.min(stat.size, MAX_DIMENSION_HEADER_BYTES);
   const buffer = Buffer.alloc(bytesToRead);
@@ -369,8 +375,8 @@ function overallVerdictFromReport(report) {
 }
 
 function inspectImage(request) {
-  const imagePathInput = request.image_path ?? request.path;
-  if (imagePathInput === undefined || imagePathInput === null || String(imagePathInput).trim() === '') {
+  const imagePathInput = firstNonBlankValue(request.image_path, request.path);
+  if (imagePathInput === undefined) {
     throw new Error('image_path is required');
   }
 
@@ -544,8 +550,8 @@ function buildRecommendations(findings) {
 }
 
 function inspectBatch(request) {
-  const directoryInput = request.directory ?? request.dataset_path;
-  if (directoryInput === undefined || directoryInput === null || String(directoryInput).trim() === '') {
+  const directoryInput = firstNonBlankValue(request.directory, request.dataset_path);
+  if (directoryInput === undefined) {
     throw new Error('directory or dataset_path is required');
   }
 
