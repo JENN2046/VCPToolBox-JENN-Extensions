@@ -279,7 +279,11 @@ function buildWorkflowAdvice(report) {
   const findingIds = new Set(report.findings.map((finding) => finding.id));
   const actions = [];
 
-  if (findingIds.has('unsupported_extension') || findingIds.has('unreadable_dimensions')) {
+  if (
+    findingIds.has('unsupported_extension')
+    || findingIds.has('non_regular_file')
+    || findingIds.has('unreadable_dimensions')
+  ) {
     actions.push({
       action: 'manual_review',
       priority: 'high',
@@ -372,6 +376,15 @@ function inspectImage(request) {
 
   const stat = fs.statSync(imagePath);
   const ext = path.extname(imagePath).toLowerCase();
+  const isRegularFile = stat.isFile();
+  if (!isRegularFile) {
+    findings.push({
+      id: 'non_regular_file',
+      severity: 'critical',
+      dimension: 'file_integrity',
+      message: 'image path is not a regular file'
+    });
+  }
   if (!IMAGE_EXTENSIONS.has(ext)) {
     findings.push({
       id: 'unsupported_extension',
@@ -382,7 +395,7 @@ function inspectImage(request) {
   }
 
   const maxBytes = CONFIG.maxFileSizeMb * 1024 * 1024;
-  if (stat.size > maxBytes) {
+  if (isRegularFile && stat.size > maxBytes) {
     findings.push({
       id: 'large_file',
       severity: 'major',
@@ -391,7 +404,14 @@ function inspectImage(request) {
     });
   }
 
-  const dimensions = readImageDimensions(imagePath, stat);
+  const dimensions = isRegularFile
+    ? readImageDimensions(imagePath, stat)
+    : {
+        width: null,
+        height: null,
+        format: ext.replace('.', '') || 'unknown',
+        error: 'image path is not a regular file'
+      };
   if (!dimensions.width || !dimensions.height) {
     findings.push({
       id: 'unreadable_dimensions',
@@ -461,6 +481,7 @@ function buildRecommendations(findings) {
   const ids = new Set(findings.map((finding) => finding.id));
   return [
     ...(ids.has('low_resolution') ? ['regenerate at a higher resolution or use an upscale workflow'] : []),
+    ...(ids.has('non_regular_file') ? ['verify the image path points to a regular file'] : []),
     ...(ids.has('unreadable_dimensions') ? ['verify the image file is complete and supported'] : []),
     ...(ids.has('extreme_aspect_ratio') ? ['review crop/bucket settings before publishing'] : []),
     ...(ids.has('compliance_keyword_review') ? ['send the image through manual brand/copyright review'] : []),
