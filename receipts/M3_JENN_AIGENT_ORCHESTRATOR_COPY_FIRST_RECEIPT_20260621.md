@@ -119,6 +119,7 @@ Rollback this M3 package evidence by reverting the external package commit that 
 - `.gitignore`
 - `manifests/README.AGENTS_OS.md`
 - `manifests/MANIFEST.sha256`
+- `receipts/README.AGENTS_OS.md`
 - `receipts/M3_JENN_AIGENT_ORCHESTRATOR_COPY_FIRST_RECEIPT_20260621.md`
 
 Do not delete LocalState, `.agent_board/**`, secrets, cache, logs, outputs, DB/vector stores, or source core files as rollback shortcuts.
