@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "mode": "no-auto-write",
+  "packageId": "jenn.photo-studio.package",
+  "decision": "dry-run-only",
+  "projectDataReads": 0,
+  "projectDataWrites": 0,
+  "externalWrites": 0,
+  "providerCalls": 0,
+  "bridgeCalls": 0,
+  "localStateReads": 0
+}

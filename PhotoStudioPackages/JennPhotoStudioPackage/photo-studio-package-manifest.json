@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "packageId": "jenn.photo-studio.package",
+  "displayName": "Jenn PhotoStudio Package",
+  "description": "Reviewed no-auto-write PhotoStudio source package skeleton.",
+  "defaultEnabled": false,
+  "entry": "src/index.js",
+  "source": {
+    "plugins": [],
+    "services": [],
+    "templates": [
+      "templates/noAutoWriteTemplates.js"
+    ]
+  },
+  "schemas": {
+    "packageRequest": "schemas/package-request.schema.json"
+  },
+  "fixtures": {
+    "noAutoWriteRequest": "fixtures/no-auto-write/request.redacted.json",
+    "expectedResult": "fixtures/no-auto-write/expected-result.json"
+  },
+  "permissions": {
+    "projectDataReads": false,
+    "projectDataWrites": false,
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "localStateReads": false
+  },
+  "activation": {
+    "runtimeRegistrationAllowed": false,
+    "autoWriteAllowed": false
+  }
+}

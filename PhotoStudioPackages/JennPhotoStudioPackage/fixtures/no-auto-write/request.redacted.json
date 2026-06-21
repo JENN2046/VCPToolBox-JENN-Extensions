@@ -1,0 +1,11 @@
+{
+  "mode": "dry-run",
+  "requestId": "redacted-fixture",
+  "projectRef": "not-in-package",
+  "templateRef": "redacted-template",
+  "containsProjectData": false,
+  "containsSecret": false,
+  "allowProjectDataRead": false,
+  "allowProjectDataWrite": false,
+  "allowExternalWrite": false
+}

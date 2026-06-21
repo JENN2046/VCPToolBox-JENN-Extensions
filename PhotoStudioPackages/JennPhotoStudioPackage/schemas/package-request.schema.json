@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jenn PhotoStudio No-Auto-Write Request",
+  "type": "object",
+  "required": [
+    "mode",
+    "requestId",
+    "projectRef",
+    "templateRef",
+    "containsProjectData",
+    "containsSecret",
+    "allowProjectDataRead",
+    "allowProjectDataWrite",
+    "allowExternalWrite"
+  ],
+  "properties": {
+    "mode": {
+      "const": "dry-run"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "projectRef": {
+      "type": "string"
+    },
+    "templateRef": {
+      "type": "string"
+    },
+    "containsProjectData": {
+      "const": false
+    },
+    "containsSecret": {
+      "const": false
+    },
+    "allowProjectDataRead": {
+      "const": false
+    },
+    "allowProjectDataWrite": {
+      "const": false
+    },
+    "allowExternalWrite": {
+      "const": false
+    }
+  },
+  "additionalProperties": false
+}

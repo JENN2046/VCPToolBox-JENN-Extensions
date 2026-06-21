@@ -8,6 +8,7 @@
 - The AdminPanel extension package root is ./AdminExtensions.
 - The AI Image adapter package root is ./AIImageAdapters.
 - The Codex/Memory bridge package root is ./MemoryBridges.
+- The PhotoStudio source package root is ./PhotoStudioPackages.
 - No secrets, logs, cache, generated outputs, or private operator state should live here.
 - No plugin migration has been performed by Gate 12.
 
@@ -22,6 +23,8 @@ VCP_AI_IMAGE_ADAPTER_ALLOWED_ROOTS=<path>\VCPToolBox-JENN-Extensions
 VCP_AI_IMAGE_ADAPTER_DIRS=<path>\VCPToolBox-JENN-Extensions\AIImageAdapters
 VCP_CODEX_MEMORY_BRIDGE_ALLOWED_ROOTS=<path>\VCPToolBox-JENN-Extensions
 VCP_CODEX_MEMORY_BRIDGE_DIRS=<path>\VCPToolBox-JENN-Extensions\MemoryBridges
+VCP_PHOTOSTUDIO_PACKAGE_ALLOWED_ROOTS=<path>\VCPToolBox-JENN-Extensions
+VCP_PHOTOSTUDIO_PACKAGE_DIRS=<path>\VCPToolBox-JENN-Extensions\PhotoStudioPackages
 ```
 
 Incompatible with the recommended nested Plugin layout unless runtime discovery behavior changes later:
@@ -30,4 +33,4 @@ Incompatible with the recommended nested Plugin layout unless runtime discovery 
 VCP_PLUGIN_DIRS=<path>\VCPToolBox-JENN-Extensions
 ```
 
-`VCP_ADMIN_EXTENSION_DIRS`, `VCP_AI_IMAGE_ADAPTER_DIRS`, and `VCP_CODEX_MEMORY_BRIDGE_DIRS` are documented for future reviewed local gates only. They must remain unset during package creation and checksum validation.
+`VCP_ADMIN_EXTENSION_DIRS`, `VCP_AI_IMAGE_ADAPTER_DIRS`, `VCP_CODEX_MEMORY_BRIDGE_DIRS`, and `VCP_PHOTOSTUDIO_PACKAGE_DIRS` are documented for future reviewed local gates only. They must remain unset during package creation and checksum validation.
