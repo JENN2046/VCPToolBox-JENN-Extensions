@@ -1,0 +1,9 @@
+{
+  "bindingId": "jenn-redacted-provider-binding",
+  "providerId": "jenn-redacted-image-provider",
+  "redacted": true,
+  "credentialRef": "not-in-package",
+  "providerEndpointRef": "not-in-package",
+  "containsSecret": false,
+  "runtimeProviderCallsAllowed": false
+}

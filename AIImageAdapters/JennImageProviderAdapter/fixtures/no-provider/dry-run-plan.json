@@ -1,0 +1,13 @@
+{
+  "requestId": "m32-no-provider-package-validation",
+  "mode": "no_provider_dry_run",
+  "steps": [
+    {
+      "type": "generate_image",
+      "capability": "generate_image",
+      "promptRef": "fixture-only-redacted-prompt",
+      "providerCall": false,
+      "imageGeneration": false
+    }
+  ]
+}

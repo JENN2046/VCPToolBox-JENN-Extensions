@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "mode": "no_provider_dry_run",
+  "adapterId": "jenn.ai-image.provider-adapter",
+  "providerCalls": 0,
+  "imageGeneration": 0,
+  "outputWrites": 0,
+  "bridgeCalls": 0,
+  "localStateReads": 0
+}

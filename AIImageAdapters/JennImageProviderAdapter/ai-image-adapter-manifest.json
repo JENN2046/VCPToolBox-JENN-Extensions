@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "adapterId": "jenn.ai-image.provider-adapter",
+  "displayName": "Jenn AI Image Provider Adapter",
+  "description": "Reviewed persistent AI Image provider-adapter skeleton with redacted binding metadata and no-provider validation.",
+  "defaultEnabled": false,
+  "provider": {
+    "providerId": "jenn-redacted-image-provider",
+    "providerSpecific": true,
+    "secretsRequired": true,
+    "runtimeProviderCallsAllowed": false
+  },
+  "capabilities": [
+    "generate_image"
+  ],
+  "entry": "src/index.js",
+  "bindings": [
+    {
+      "bindingId": "jenn-redacted-provider-binding",
+      "path": "bindings/redacted-provider-binding.json",
+      "redacted": true
+    }
+  ],
+  "fixtures": {
+    "noProviderDryRunPlan": "fixtures/no-provider/dry-run-plan.json",
+    "expectedResult": "fixtures/no-provider/expected-result.json"
+  },
+  "permissions": {
+    "providerCalls": false,
+    "imageGeneration": false,
+    "externalWrites": false,
+    "bridgeCalls": false,
+    "localStateReads": false
+  }
+}
