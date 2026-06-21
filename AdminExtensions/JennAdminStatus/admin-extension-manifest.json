@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.status",
+  "displayName": "Jenn Admin Status",
+  "description": "Reviewed persistent AdminPanel extension skeleton for local package validation.",
+  "defaultEnabled": false,
+  "backend": {
+    "routes": [
+      {
+        "routeId": "jenn-admin-status",
+        "mountPath": "/jenn-admin-status",
+        "module": "backend/routes/status.js",
+        "methods": ["GET"],
+        "requiresAuth": true,
+        "writeCapable": false
+      }
+    ]
+  },
+  "frontend": {
+    "routes": [
+      {
+        "routeId": "jenn-admin-status-view",
+        "routeName": "JennAdminStatusView",
+        "path": "/jenn-admin-status",
+        "title": "Jenn Admin Status",
+        "icon": "monitor_heart",
+        "navGroup": "toolsPlugins",
+        "component": "frontend/views/JennAdminStatusView.vue",
+        "showInSidebar": true,
+        "requiresAuth": true
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": ["read:jenn-admin-status"],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}
