@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "mode": "no-live-write",
+  "bridgeId": "jenn.codex-memory.bridge",
+  "decision": "dry-run-only",
+  "bridgeWrites": 0,
+  "privateMemoryReads": 0,
+  "localStateReads": 0,
+  "externalWrites": 0,
+  "providerCalls": 0
+}

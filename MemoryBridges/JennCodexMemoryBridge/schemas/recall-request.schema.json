@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jenn Codex Memory Dry-Run Recall Request",
+  "type": "object",
+  "required": [
+    "mode",
+    "requestId",
+    "projectRef",
+    "queryRef",
+    "containsMemoryContent",
+    "containsSecret",
+    "allowPrivateMemoryRead"
+  ],
+  "properties": {
+    "mode": {
+      "const": "dry-run"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "projectRef": {
+      "type": "string"
+    },
+    "queryRef": {
+      "type": "string"
+    },
+    "containsMemoryContent": {
+      "const": false
+    },
+    "containsSecret": {
+      "const": false
+    },
+    "allowPrivateMemoryRead": {
+      "const": false
+    }
+  },
+  "additionalProperties": false
+}

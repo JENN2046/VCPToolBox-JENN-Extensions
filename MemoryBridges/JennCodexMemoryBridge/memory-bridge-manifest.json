@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "bridgeId": "jenn.codex-memory.bridge",
+  "displayName": "Jenn Codex Memory Bridge",
+  "description": "Reviewed no-live-write Codex/Memory bridge package skeleton.",
+  "defaultEnabled": false,
+  "capabilities": [
+    "memory.write.dryRun",
+    "memory.recall.dryRun"
+  ],
+  "entry": "src/index.js",
+  "schemas": {
+    "writeRequest": "schemas/write-request.schema.json",
+    "recallRequest": "schemas/recall-request.schema.json"
+  },
+  "fixtures": {
+    "noLiveWriteRequest": "fixtures/no-live-write/write-request.redacted.json",
+    "expectedDecision": "fixtures/no-live-write/expected-decision.json"
+  },
+  "permissions": {
+    "bridgeWrites": false,
+    "privateMemoryReads": false,
+    "localStateReads": false,
+    "externalWrites": false,
+    "providerCalls": false
+  },
+  "activation": {
+    "runtimeRegistrationAllowed": false,
+    "liveWriteActivationAllowed": false
+  }
+}

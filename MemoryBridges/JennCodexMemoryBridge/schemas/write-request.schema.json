@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jenn Codex Memory Dry-Run Write Request",
+  "type": "object",
+  "required": [
+    "mode",
+    "requestId",
+    "projectRef",
+    "memoryKind",
+    "contentRef",
+    "containsMemoryContent",
+    "containsSecret",
+    "allowLiveWrite"
+  ],
+  "properties": {
+    "mode": {
+      "const": "dry-run"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "projectRef": {
+      "type": "string"
+    },
+    "memoryKind": {
+      "enum": [
+        "process",
+        "knowledge"
+      ]
+    },
+    "contentRef": {
+      "type": "string"
+    },
+    "containsMemoryContent": {
+      "const": false
+    },
+    "containsSecret": {
+      "const": false
+    },
+    "allowLiveWrite": {
+      "const": false
+    }
+  },
+  "additionalProperties": false
+}

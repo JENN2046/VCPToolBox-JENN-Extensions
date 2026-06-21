@@ -1,0 +1,10 @@
+{
+  "mode": "dry-run",
+  "requestId": "redacted-fixture",
+  "projectRef": "not-in-package",
+  "memoryKind": "process",
+  "contentRef": "redacted-placeholder",
+  "containsMemoryContent": false,
+  "containsSecret": false,
+  "allowLiveWrite": false
+}
