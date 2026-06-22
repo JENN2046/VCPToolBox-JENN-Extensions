@@ -2,11 +2,16 @@
   "schemaVersion": 1,
   "extensionId": "jenn.admin.channel-hub",
   "displayName": "Channel Hub",
-  "description": "Metadata-only skeleton for the planned Channel Hub AdminPanel page/API extension.",
+  "description": "Reviewed copy-first package for the planned Channel Hub AdminPanel page/API extension. Runtime remains disabled.",
   "defaultEnabled": false,
   "runtimeEnabled": false,
   "dynamicVueImport": false,
-  "copyFirstContentIncluded": false,
+  "copyFirstContentIncluded": true,
+  "copyFirstContentReview": {
+    "milestone": "M93_ADMINPANEL_PAGE_API_REVIEWED_CONTENT_COPY_FIRST_GATE",
+    "status": "reviewed-copy-first-no-runtime",
+    "contentGuard": "source scanned for value-bearing secret/token/private-path hits before copy; runtime and external writes remain disabled"
+  },
   "sourcePackage": "AdminExtensions",
   "sourceCandidates": {
     "view": "AdminPanel-Vue/src/views/ChannelHubManager.vue",
@@ -23,7 +28,7 @@
         "requiresAuth": true,
         "component": "frontend/views/ChannelHubManager.vue",
         "apiModule": "frontend/api/channelHub.ts",
-        "contentCopied": false
+        "contentCopied": true
       }
     ]
   },

@@ -2,15 +2,24 @@
   "schemaVersion": 1,
   "extensionId": "jenn.admin.oauth-auth-center",
   "displayName": "OAuth Auth Center",
-  "description": "Metadata-only skeleton for the planned OAuth Auth Center AdminPanel page/API extension.",
+  "description": "Reviewed copy-first package for the planned OAuth Auth Center AdminPanel page/API extension. Runtime remains disabled.",
   "defaultEnabled": false,
   "runtimeEnabled": false,
   "dynamicVueImport": false,
-  "copyFirstContentIncluded": false,
+  "copyFirstContentIncluded": true,
+  "copyFirstContentReview": {
+    "milestone": "M93_ADMINPANEL_PAGE_API_REVIEWED_CONTENT_COPY_FIRST_GATE",
+    "status": "reviewed-copy-first-no-runtime",
+    "contentGuard": "auth/OAuth display guard passed for no token/secret value display; runtime action guard required before mounting"
+  },
   "sourcePackage": "AdminExtensions",
-  "reviewRequired": [
+  "reviewCompleted": [
     "auth-oauth-display-guard",
     "no-secret-value-copy"
+  ],
+  "reviewRequired": [
+    "runtime-action-guard-before-mount",
+    "no-provider-or-upstream-smoke-without-explicit-runtime-gate"
   ],
   "sourceCandidates": {
     "view": "AdminPanel-Vue/src/views/OAuthAuthCenter.vue",
@@ -27,7 +36,7 @@
         "requiresAuth": true,
         "component": "frontend/views/OAuthAuthCenter.vue",
         "apiModule": "frontend/api/oauthAuth.ts",
-        "contentCopied": false
+        "contentCopied": true
       }
     ]
   },

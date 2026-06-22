@@ -2,11 +2,16 @@
   "schemaVersion": 1,
   "extensionId": "jenn.admin.codex-imagegen-relay",
   "displayName": "Codex Imagegen Relay",
-  "description": "Metadata-only skeleton for the planned Codex Imagegen Relay AdminPanel page/API extension.",
+  "description": "Reviewed copy-first package for the planned Codex Imagegen Relay AdminPanel page/API extension. Runtime remains disabled.",
   "defaultEnabled": false,
   "runtimeEnabled": false,
   "dynamicVueImport": false,
-  "copyFirstContentIncluded": false,
+  "copyFirstContentIncluded": true,
+  "copyFirstContentReview": {
+    "milestone": "M93_ADMINPANEL_PAGE_API_REVIEWED_CONTENT_COPY_FIRST_GATE",
+    "status": "reviewed-copy-first-no-runtime",
+    "contentGuard": "source scanned for value-bearing secret/token/private-path hits before copy; runtime and provider/output actions remain disabled"
+  },
   "sourcePackage": "AdminExtensions",
   "sourceCandidates": {
     "view": "AdminPanel-Vue/src/views/CodexImagegenRelay.vue",
@@ -23,7 +28,7 @@
         "requiresAuth": true,
         "component": "frontend/views/CodexImagegenRelay.vue",
         "apiModule": "frontend/api/codexImagegenRelay.ts",
-        "contentCopied": false
+        "contentCopied": true
       }
     ]
   },
