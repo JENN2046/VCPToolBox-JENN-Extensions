@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.codex-memory-monitor",
+  "displayName": "Codex Memory Monitor",
+  "description": "Metadata-only skeleton for the planned Codex Memory Monitor AdminPanel page/API extension.",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "dynamicVueImport": false,
+  "copyFirstContentIncluded": false,
+  "sourcePackage": "AdminExtensions",
+  "sourceCandidates": {
+    "view": "AdminPanel-Vue/src/views/CodexMemoryMonitor.vue",
+    "api": "AdminPanel-Vue/src/api/codexMemory.ts"
+  },
+  "frontend": {
+    "plannedRoutes": [
+      {
+        "routeId": "codex-memory-monitor",
+        "routeName": "CodexMemoryMonitor",
+        "title": "Codex Memory Monitor",
+        "navGroup": "toolsPlugins",
+        "showInSidebar": false,
+        "requiresAuth": true,
+        "component": "frontend/views/CodexMemoryMonitor.vue",
+        "apiModule": "frontend/api/codexMemory.ts",
+        "contentCopied": false
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": [],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.oauth-auth-center",
+  "displayName": "OAuth Auth Center",
+  "description": "Metadata-only skeleton for the planned OAuth Auth Center AdminPanel page/API extension.",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "dynamicVueImport": false,
+  "copyFirstContentIncluded": false,
+  "sourcePackage": "AdminExtensions",
+  "reviewRequired": [
+    "auth-oauth-display-guard",
+    "no-secret-value-copy"
+  ],
+  "sourceCandidates": {
+    "view": "AdminPanel-Vue/src/views/OAuthAuthCenter.vue",
+    "api": "AdminPanel-Vue/src/api/oauthAuth.ts"
+  },
+  "frontend": {
+    "plannedRoutes": [
+      {
+        "routeId": "oauth-auth-center",
+        "routeName": "OAuthAuthCenter",
+        "title": "OAuth Auth Center",
+        "navGroup": "system",
+        "showInSidebar": false,
+        "requiresAuth": true,
+        "component": "frontend/views/OAuthAuthCenter.vue",
+        "apiModule": "frontend/api/oauthAuth.ts",
+        "contentCopied": false
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": [],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}

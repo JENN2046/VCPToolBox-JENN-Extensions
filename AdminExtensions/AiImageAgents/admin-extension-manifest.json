@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.ai-image-agents",
+  "displayName": "AI Image Agents",
+  "description": "Metadata-only skeleton for the planned AI Image Agents AdminPanel page/API extension.",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "dynamicVueImport": false,
+  "copyFirstContentIncluded": false,
+  "sourcePackage": "AdminExtensions",
+  "sourceCandidates": {
+    "view": "AdminPanel-Vue/src/views/AiImageAgents.vue",
+    "api": "AdminPanel-Vue/src/api/aiImageAgents.ts"
+  },
+  "frontend": {
+    "plannedRoutes": [
+      {
+        "routeId": "ai-image-agents",
+        "routeName": "AiImageAgents",
+        "title": "AI Image Agents",
+        "navGroup": "aiImage",
+        "showInSidebar": false,
+        "requiresAuth": true,
+        "component": "frontend/views/AiImageAgents.vue",
+        "apiModule": "frontend/api/aiImageAgents.ts",
+        "contentCopied": false
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": [],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}

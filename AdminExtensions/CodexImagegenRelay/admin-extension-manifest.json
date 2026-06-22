@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.codex-imagegen-relay",
+  "displayName": "Codex Imagegen Relay",
+  "description": "Metadata-only skeleton for the planned Codex Imagegen Relay AdminPanel page/API extension.",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "dynamicVueImport": false,
+  "copyFirstContentIncluded": false,
+  "sourcePackage": "AdminExtensions",
+  "sourceCandidates": {
+    "view": "AdminPanel-Vue/src/views/CodexImagegenRelay.vue",
+    "api": "AdminPanel-Vue/src/api/codexImagegenRelay.ts"
+  },
+  "frontend": {
+    "plannedRoutes": [
+      {
+        "routeId": "codex-imagegen-relay",
+        "routeName": "CodexImagegenRelay",
+        "title": "Codex Imagegen Relay",
+        "navGroup": "aiImage",
+        "showInSidebar": false,
+        "requiresAuth": true,
+        "component": "frontend/views/CodexImagegenRelay.vue",
+        "apiModule": "frontend/api/codexImagegenRelay.ts",
+        "contentCopied": false
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": [],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}

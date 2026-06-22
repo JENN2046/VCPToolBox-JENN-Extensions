@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "jenn.admin.channel-hub",
+  "displayName": "Channel Hub",
+  "description": "Metadata-only skeleton for the planned Channel Hub AdminPanel page/API extension.",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "dynamicVueImport": false,
+  "copyFirstContentIncluded": false,
+  "sourcePackage": "AdminExtensions",
+  "sourceCandidates": {
+    "view": "AdminPanel-Vue/src/views/ChannelHubManager.vue",
+    "api": "AdminPanel-Vue/src/api/channelHub.ts"
+  },
+  "frontend": {
+    "plannedRoutes": [
+      {
+        "routeId": "channel-hub",
+        "routeName": "ChannelHubManager",
+        "title": "Channel Hub",
+        "navGroup": "toolsPlugins",
+        "showInSidebar": false,
+        "requiresAuth": true,
+        "component": "frontend/views/ChannelHubManager.vue",
+        "apiModule": "frontend/api/channelHub.ts",
+        "contentCopied": false
+      }
+    ]
+  },
+  "permissions": {
+    "adminApi": [],
+    "externalWrites": false,
+    "providerCalls": false,
+    "bridgeCalls": false
+  }
+}
