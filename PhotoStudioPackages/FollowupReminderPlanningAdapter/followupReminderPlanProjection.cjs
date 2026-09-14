@@ -157,6 +157,9 @@ function addDays(dateValue, offsetDays) {
       parts.day = 1;
       parts.month += 1;
       if (parts.month > 12) {
+        if (parts.year === 9999) {
+          throw new RangeError('Date arithmetic exceeds the YYYY-MM-DD range.');
+        }
         parts.month = 1;
         parts.year += 1;
       }
