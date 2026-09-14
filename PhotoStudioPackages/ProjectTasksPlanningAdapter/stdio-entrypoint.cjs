@@ -107,6 +107,7 @@ function validateRequest(request) {
   if (!shape.ok) return failure(request, shape.code, 'Request shape is not allowed.');
   if (request.protocolVersion !== PROTOCOL_VERSION) return failure(request, 'PROTOCOL_VERSION_UNSUPPORTED', 'Unsupported protocol version.');
   if (!safeString(request.requestId)) return failure(request, 'REQUEST_ID_REQUIRED', 'requestId is required.');
+  if (typeof request.action !== 'string') return failure(request, 'ACTION_DENIED', 'Action is not authorized for this entrypoint.');
   if (request.action === '*' || String(request.action || '').includes('*')) return failure(request, 'ACTION_DENIED', 'Wildcard action is not authorized.');
   if (request.action !== ACTION) return failure(request, 'ACTION_DENIED', 'Action is not authorized for this entrypoint.');
   if (request.creationId !== CREATION_ID) return failure(request, 'CREATION_ID_DENIED', 'Creation id is not authorized for this action.');
@@ -173,7 +174,14 @@ function main() {
       emit(failure(null, 'INPUT_LIMIT_EXCEEDED', 'Input exceeds byte limit.'));
       return;
     }
-    const parsed = parseLine(Buffer.concat(chunks).toString('utf8'));
+    const input = Buffer.concat(chunks);
+    const text = input.toString('utf8');
+    // Reject lossy UTF-8 decoding before parsing or comparing caller identifiers.
+    if (!Buffer.from(text, 'utf8').equals(input)) {
+      emit(failure(null, 'JSON_PARSE_FAILED', 'Input JSON could not be parsed.'));
+      return;
+    }
+    const parsed = parseLine(text);
     emit(parsed.ok ? handleRequest(parsed.request) : parsed.response);
   });
 
