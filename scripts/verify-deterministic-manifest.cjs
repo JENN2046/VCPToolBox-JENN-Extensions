@@ -28,6 +28,7 @@ function parseArgs(argv) {
 
 function git(args, options = {}) {
   const result = cp.spawnSync('git', args, {
+    env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
     encoding: options.encoding === null ? null : 'utf8',
     maxBuffer: 128 * 1024 * 1024
   });
@@ -42,6 +43,8 @@ function git(args, options = {}) {
 function isRelativeExactPath(filePath) {
   return typeof filePath === 'string'
     && filePath.length > 0
+    && filePath !== 'manifests/MANIFEST.sha256'
+    && filePath !== 'manifests/PAYLOAD_ATTESTATION.json'
     && !filePath.includes('\\')
     && !filePath.startsWith('/')
     && !filePath.startsWith('//')
@@ -60,6 +63,7 @@ function hardDenied(filePath) {
   if (segments.some((segment) => deniedSegments.includes(segment))) return true;
   if (/(^|\/)\.env($|\.)/i.test(filePath)) return true;
   if (/(^|\/)config\.env(\.local)?$/i.test(filePath)) return true;
+  if (/(^|\/)[^/]*\.env(?:\.[^/]*)?$/i.test(filePath) && !/\.(example|template)$/i.test(filePath)) return true;
   if (/\.(sqlite|sqlite3|db|db3|duckdb|faiss|parquet|log|pem|key|p12|pfx|jks|kdbx)$/i.test(filePath)) return true;
   if (/\.(sqlite|db)-(shm|wal)$/i.test(filePath)) return true;
   return [
@@ -92,7 +96,7 @@ function validatePackageSchema(packageFiles, failures) {
     return [];
   }
   if (packageFiles.schemaVersion !== 1) failures.push('PACKAGE_FILES schemaVersion must be 1');
-  if (!/^[a-f0-9]{40}$/.test(packageFiles.payloadSourceCommit || '')) failures.push('Invalid payloadSourceCommit');
+  if (typeof packageFiles.payloadSourceCommit !== 'string' || !/^[a-f0-9]{40}$/.test(packageFiles.payloadSourceCommit || '')) failures.push('Invalid payloadSourceCommit');
   if (!Array.isArray(packageFiles.packages)) {
     failures.push('PACKAGE_FILES packages must be an array');
     return [];
@@ -123,7 +127,7 @@ function validatePackageSchema(packageFiles, failures) {
     for (const key of Object.keys(pkg)) {
       if (!packageKeys.includes(key)) failures.push(`${label} has unsupported property ${key}`);
     }
-    if (!/^[a-z0-9._-]+$/.test(pkg.packageId || '')) failures.push(`${label}.packageId is invalid`);
+    if (typeof pkg.packageId !== 'string' || !/^[a-z0-9._-]+$/.test(pkg.packageId || '')) failures.push(`${label}.packageId is invalid`);
     if (packageIds.has(pkg.packageId)) failures.push(`${label}.packageId is duplicated`);
     packageIds.add(pkg.packageId);
     if (!Array.isArray(pkg.creationIds)) failures.push(`${label}.creationIds must be an array`);

@@ -522,3 +522,154 @@ for (const tool of [builder, verifier]) {
   }
 }
 
+
+// PR14 object identity follow-up: replacement refs and clones are synthetic/tmpfs only.
+function invokeAt(tool, dir, cwd) {
+  fs.writeFileSync(trace, '');
+  assert.equal(Object.hasOwn(env, 'GIT_NO_REPLACE_OBJECTS'), false, 'fixture must not mask the production fix');
+  const result = cp.spawnSync(process.execPath, [
+    '--no-addons', '--require', monitor, path.join(tools, tool),
+    '--package-files', path.join(dir, 'map.json'), '--manifest', path.join(dir, 'manifest.sha256'),
+    '--attestation', path.join(dir, 'attestation.json')
+  ], { cwd, env, timeout: 10000, maxBuffer: 1048576 });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null);
+  return { status: result.status, stdout: result.stdout,
+    output: result.stdout.length ? JSON.parse(result.stdout.toString('utf8')) : null };
+}
+function withSyntheticReplacement(kind, check) {
+  const different = Buffer.from('// SYNTHETIC REPLACEMENT PAYLOAD ONLY\n');
+  const replacementBlob = git(['hash-object', '-w', '--stdin'], different);
+  const originalBlob = objects.find(row => row.name === 'fixture/a.cjs').oid;
+  const replacementCommit = git(['commit-tree', tree(objects.map(row =>
+    row.name === 'fixture/a.cjs' ? { ...row, oid: replacementBlob } : row
+  ))], Buffer.from('Synthetic replacement commit only\n'));
+  const replaced = kind === 'commit' ? commit : originalBlob;
+  const replacement = kind === 'commit' ? replacementCommit : replacementBlob;
+  git(['update-ref', 'refs/heads/synthetic', commit]);
+  git(['symbolic-ref', 'HEAD', 'refs/heads/synthetic']);
+  git(['update-ref', 'refs/replace/' + replaced, replacement]);
+  try {
+    // Prove replacement lookup is active when the caller does not disable it.
+    assert.equal(git(['show', commit + ':fixture/a.cjs']), different.toString('utf8').trim());
+    const clean = path.join(root, 'clean-clone-' + sequence++);
+    const cloned = cp.spawnSync('git', [...gitFlags, '-c', 'protocol.file.allow=always',
+      'clone', '--local', '--no-hardlinks', '--no-checkout', '--template=' + template, repo, clean
+    ], { env: { ...env, GIT_ALLOW_PROTOCOL: 'file' }, timeout: 10000, maxBuffer: 1048576 });
+    assert.equal(cloned.error, undefined); assert.equal(cloned.status, 0, 'exact synthetic local clone succeeds');
+    const refs = cp.spawnSync('git', [...gitFlags, 'for-each-ref', '--format=%(refname)', 'refs/replace'],
+      { cwd: clean, env, timeout: 5000, maxBuffer: 1048576 });
+    assert.equal(refs.status, 0); assert.equal(refs.stdout.length, 0, 'clean clone carries no replacement refs');
+    check({ clean, different });
+  } finally {
+    git(['update-ref', '-d', 'refs/replace/' + replaced]);
+  }
+}
+for (const kind of ['commit', 'blob']) {
+  test(`builder ignores synthetic ${kind} replacement and matches the clean clone bytes`, () => {
+    withSyntheticReplacement(kind, ({ clean }) => {
+      const dir = prepare(packageMap(['fixture/a.cjs']));
+      const replacedBuild = invokeAt(builder, dir, repo);
+      const manifest = fs.readFileSync(path.join(dir, 'manifest.sha256'));
+      const attestation = fs.readFileSync(path.join(dir, 'attestation.json'));
+      const cleanBuild = invokeAt(builder, dir, clean);
+      assert.equal(replacedBuild.status, 0); assert.equal(cleanBuild.status, 0);
+      assert.deepEqual(manifest, manifestFrame(['fixture/a.cjs']), 'hash the attested original commit object');
+      assert.deepEqual(manifest, fs.readFileSync(path.join(dir, 'manifest.sha256')));
+      assert.deepEqual(attestation, fs.readFileSync(path.join(dir, 'attestation.json')));
+      assert.deepEqual(replacedBuild.stdout, cleanBuild.stdout);
+      assert.equal(JSON.parse(attestation).payloadSourceCommit, commit);
+    });
+  });
+  test(`verifier accepts original objects despite synthetic ${kind} replacement and matches clean clone`, () => {
+    withSyntheticReplacement(kind, ({ clean }) => {
+      const dir = prepare(packageMap(['fixture/a.cjs']), manifestFrame(['fixture/a.cjs']));
+      const replacedVerify = invokeAt(verifier, dir, repo);
+      const cleanVerify = invokeAt(verifier, dir, clean);
+      assert.equal(cleanVerify.status, 0); assert.equal(replacedVerify.status, 0);
+      assert.equal(replacedVerify.output.ok, true); assert.deepEqual(replacedVerify.stdout, cleanVerify.stdout);
+    });
+  });
+  test(`verifier rejects a digest borrowed from synthetic ${kind} replacement in both repositories`, () => {
+    withSyntheticReplacement(kind, ({ clean, different }) => {
+      const forged = Buffer.from(sha(different) + '  fixture/a.cjs\n');
+      const dir = prepare(packageMap(['fixture/a.cjs']), forged);
+      const replacedVerify = invokeAt(verifier, dir, repo);
+      const cleanVerify = invokeAt(verifier, dir, clean);
+      assert.equal(cleanVerify.status, 1); assert.equal(replacedVerify.status, 1);
+      assert.equal(replacedVerify.output.counters.manifest_hash_mismatch_count, 1);
+      assert.deepEqual(replacedVerify.stdout, cleanVerify.stdout);
+    });
+  });
+}
+
+// These names model denied categories; every committed body below is synthetic.
+const selfReferencePaths = ['manifests/MANIFEST.sha256', 'manifests/PAYLOAD_ATTESTATION.json'];
+const namedEnvPaths = [
+  'fixture/credentials.env', 'fixture/service.env.local', 'nested/service.ENV.PRODUCTION',
+  'fixture/service.env.production.local', 'fixture/service.env.example.local', 'fixture/service.env.template.local'
+];
+const namedTemplatePaths = [
+  'fixture/service.env.example', 'fixture/service.env.template', 'fixture/config.env.example',
+  'fixture/config.env.template', 'fixture/service.environment', 'fixture/example.service.env.template'
+];
+const identityBytes = Buffer.from('SYNTHETIC CATEGORY DATA ONLY; NO CREDENTIALS OR OPERATIONAL DATA\n');
+const identityObjects = [...selfReferencePaths, ...namedEnvPaths, ...namedTemplatePaths].map(name => ({
+  name, mode: '100644', oid: git(['hash-object', '-w', '--stdin'], identityBytes)
+}));
+const identityCommit = git(['commit-tree', tree([...objects, ...identityObjects])],
+  Buffer.from('Synthetic identity-category fixture only\n'));
+function prepareIdentity(files, rootOverride) {
+  const map = packageMap(files); map.payloadSourceCommit = identityCommit;
+  if (rootOverride !== undefined) map.packages[0].root = rootOverride;
+  const frame = Buffer.from(files.slice().sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+    .map(name => sha(data.has(name) ? data.get(name) : identityBytes) + '  ' + name + '\n').join(''));
+  const dir = prepare(map, frame); changeProof(dir, proof => { proof.payloadSourceCommit = identityCommit; }); return dir;
+}
+for (const tool of [builder, verifier]) {
+  for (const name of selfReferencePaths) {
+    test(`${tool} rejects self-reference payload ${name} before any sibling or artifact body`, () => {
+      const result = run(tool, prepareIdentity(['fixture/a.cjs', name]));
+      rejectedWithoutBodies(result);
+    });
+    test(`${tool} rejects self-reference package root ${name} before any Git or body`, () => {
+      const result = run(tool, prepareIdentity(['fixture/a.cjs'], name));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+  for (const name of namedEnvPaths) {
+    test(`${tool} rejects non-template env suffix ${name} before all body reads`, () => {
+      rejectedWithoutBodies(run(tool, prepareIdentity(['fixture/a.cjs', name])));
+    });
+  }
+  for (const name of namedTemplatePaths) {
+    test(`${tool} preserves prior named template or ordinary path ${name}`, () => {
+      const result = run(tool, prepareIdentity([name]));
+      assert.equal(result.status, 0); assert.deepEqual(result.reads, [name]);
+    });
+  }
+}
+
+
+// Adjacent identity checks retain the existing string SHA/ID contract; no new schema fields.
+for (const tool of [builder, verifier]) {
+  test(`${tool} rejects array payloadSourceCommit before Git despite a coercible hex value`, () => {
+    const map = packageMap(['fixture/a.cjs']); map.payloadSourceCommit = [commit];
+    const dir = prepare(map, manifestFrame(['fixture/a.cjs']));
+    changeProof(dir, proof => { proof.payloadSourceCommit = [commit]; });
+    const result = run(tool, dir); rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+  });
+  for (const [kind, packageId] of [['array', ['synthetic-package']], ['number', 123], ['boolean', true]]) {
+    test(`${tool} rejects ${kind} packageId before Git rather than regex coercion`, () => {
+      const map = packageMap(['fixture/a.cjs']); map.packages[0].packageId = packageId;
+      const result = run(tool, prepare(map, manifestFrame(['fixture/a.cjs'])));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+  test(`${tool} rejects duplicate array packageIds that are distinct JSON objects`, () => {
+    const map = packageMap(['fixture/a.cjs']); map.packages[0].packageId = ['same'];
+    map.packages.push({ ...map.packages[0], packageId: ['same'], root: 'other', files: ['outside.txt'] });
+    const result = run(tool, prepare(map, manifestFrame(['fixture/a.cjs', 'outside.txt'])));
+    rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+  });
+}
+
