@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 3,
+  "copyVersion": 2,
+  "packageId": "jenn.photostudio.selection-notice-snapshot-adapter",
+  "version": "0.1.0",
+  "displayName": "Photo Studio Selection Notice Snapshot Adapter",
+  "payloadClass": "photo-studio-selection-notice-snapshot-adapter",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "entrypoint": "stdio-entrypoint.cjs",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node stdio-entrypoint.cjs"
+  },
+  "protocol": "CANONICAL_JSONL_V1",
+  "communication": {
+    "protocol": "stdio"
+  },
+  "allowedActions": [
+    "build_selection_notice_from_snapshot"
+  ],
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "build_selection_notice_from_snapshot",
+        "creationId": "jenn.photo-studio.plugin-selection-notice",
+        "syntheticShadowOnly": true
+      }
+    ]
+  },
+  "sourcePreserved": true,
+  "networkAuthorized": false,
+  "realBackendAuthorized": false,
+  "realAuthAuthorized": false,
+  "businessWritesAuthorized": false,
+  "filesystemReadsAuthorized": false,
+  "filesystemWritesAuthorized": false,
+  "providerCallsAuthorized": false,
+  "bridgeCallsAuthorized": false,
+  "privateDataAuthorized": false,
+  "databaseAccessAuthorized": false,
+  "storageAccessAuthorized": false,
+  "notificationAuthorized": false,
+  "notificationSendAuthorized": false,
+  "messageDispatchAuthorized": false,
+  "calendarWriteAuthorized": false,
+  "externalSyncAuthorized": false,
+  "persistentEnablementAuthorized": false,
+  "syntheticShadowOnly": true,
+  "legacyTemplateParityStatus": "INTENTIONALLY_DIVERGED_BY_JENN_COPY_REVISION",
+  "legacyTemplateEvidencePreserved": true,
+  "userDirectedRevision": true,
+  "fullParity": false,
+  "fullParityClaimed": false,
+  "userAcceptanceStatus": "PENDING",
+  "productionEnabled": false,
+  "retirement": false,
+  "creationIds": [
+    "jenn.photo-studio.plugin-selection-notice"
+  ]
+}

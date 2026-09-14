@@ -1,0 +1,14 @@
+/manifests/MANIFEST.sha256 text eol=lf
+/manifests/PACKAGE_FILES.json text eol=lf
+/manifests/PAYLOAD_ATTESTATION.json text eol=lf
+/manifests/package-files.schema.json text eol=lf
+/scripts/build-deterministic-manifest.cjs text eol=lf
+/scripts/verify-deterministic-manifest.cjs text eol=lf
+/Plugin/AIGentQuality/stdio-entrypoint.cjs text eol=lf
+/Plugin/AIGentStyle/stdio-entrypoint.cjs text eol=lf
+/Plugin/AIGentWorkflow/stdio-entrypoint.cjs text eol=lf
+/tests/aigent-batch-reconciliation.test.cjs text eol=lf
+/tests/aigent-quality-compat.test.cjs text eol=lf
+/tests/aigent-style-compat.test.cjs text eol=lf
+/tests/aigent-workflow-compat.test.cjs text eol=lf
+/tests/supply-chain-manifest.test.cjs text eol=lf
