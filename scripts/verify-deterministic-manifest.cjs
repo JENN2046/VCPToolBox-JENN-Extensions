@@ -13,6 +13,9 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const key = argv[i];
     const value = argv[i + 1];
+    if (typeof value !== 'string' || value.length === 0 || value.startsWith('--')) {
+      throw new Error(`Missing value for ${key}`);
+    }
     if (key === '--package-files') args.packageFiles = value;
     else if (key === '--manifest') args.manifest = value;
     else if (key === '--attestation') args.attestation = value;
@@ -51,7 +54,7 @@ function hardDenied(filePath) {
   const segments = filePath.split('/').map((segment) => segment.toLowerCase());
   const deniedSegments = [
     '.git', '.agent_board', 'localstate', 'node_modules', 'cache', 'state',
-    'logs', 'log', 'output', 'outputs', 'secrets', 'private', 'debuglog',
+    'logs', 'log', 'output', 'outputs', 'receipts', 'secrets', 'private', 'debuglog',
     'image', 'vectorstore', 'vcptimedcontacts', 'vcptimedresults'
   ];
   if (segments.some((segment) => deniedSegments.includes(segment))) return true;

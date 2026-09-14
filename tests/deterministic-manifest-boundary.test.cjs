@@ -341,3 +341,76 @@ test('nonempty package set cannot use the single-LF zero-entry output', () => {
   const dir = prepare(packageMap(['fixture/a.cjs']), Buffer.from('\n')); changeProof(dir, proof => { proof.manifestEntryCount = 0; });
   const result = run(verifier, dir); rejectedWithoutBodies(result); assert.equal(result.output.counters.allowlisted_missing_from_manifest_count, 1);
 });
+
+// PR14 CLI follow-up: all input values are explicit synthetic files, never defaults.
+function runArgvCase(tool, dir, suffix) {
+  fs.writeFileSync(trace, '');
+  const observedPaths = ['map.json', 'manifest.sha256', 'attestation.json', 'registry.json'].map(name => path.join(dir, name));
+  const readTrace = path.join(dir, 'input-read-count.txt'); fs.writeFileSync(readTrace, '');
+  const hook = path.join(dir, 'input-monitor.cjs');
+  fs.writeFileSync(hook, `const fs = require('node:fs');
+const read = fs.readFileSync; const selected = new Set(${JSON.stringify(observedPaths)});
+fs.readFileSync = function(file, ...args) {
+  if (selected.has(file)) fs.appendFileSync(${JSON.stringify(readTrace)}, 'R');
+  return Reflect.apply(read, this, [file, ...args]);
+};\n`);
+  const args = ['--no-addons', '--require', monitor, '--require', hook, path.join(tools, tool), '--package-files', observedPaths[0], '--manifest', observedPaths[1], '--attestation', observedPaths[2], ...suffix];
+  const result = cp.spawnSync(process.execPath, args, { cwd: repo, env, timeout: 10000, maxBuffer: 1048576 });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null);
+  const calls = fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
+  return { status: result.status, calls, inputReads: fs.readFileSync(readTrace).length };
+}
+for (const tool of [builder, verifier]) {
+  const options = ['--package-files', '--manifest', '--attestation', '--registry', ...(tool === builder ? ['--verifier-path'] : [])];
+  for (const option of options) {
+    for (const [label, tail] of [['missing', []], ['empty', ['']], ['next-option', ['--registry']]]) {
+      test(`${tool} rejects ${option} ${label} value before any input or Git read`, () => {
+        const dir = prepare(packageMap(['fixture/a.cjs']), manifestFrame(['fixture/a.cjs']));
+        const result = runArgvCase(tool, dir, [option, ...tail]);
+        assert.equal(result.status, 1); assert.equal(result.inputReads, 0); assert.deepEqual(result.calls, []);
+      });
+    }
+  }
+  test(`${tool} cannot erase a supplied registry with a repeated empty argument`, () => {
+    const { dir, registry } = registryCase();
+    const result = runArgvCase(tool, dir, ['--registry', registry, '--registry', '']);
+    assert.equal(result.status, 1); assert.equal(result.inputReads, 0); assert.deepEqual(result.calls, []);
+  });
+}
+test('explicit dot-prefixed double-dash path and nonempty verifier metadata remain valid', () => {
+  const dir = prepare(packageMap(['fixture/a.cjs']), manifestFrame(['fixture/a.cjs']));
+  const name = `--synthetic-registry-${sequence++}.json`; const bytes = Buffer.from('{"synthetic":true}\n');
+  fs.writeFileSync(path.join(repo, name), bytes);
+  const result = runArgvCase(builder, dir, ['--registry', './' + name, '--verifier-path', ' synthetic verifier metadata ']);
+  assert.equal(result.status, 0);
+  const proof = JSON.parse(fs.readFileSync(path.join(dir, 'attestation.json'), 'utf8'));
+  assert.equal(proof.creationRegistrySha256, sha(bytes)); assert.equal(proof.verifierPath, ' synthetic verifier metadata ');
+  assert.equal(runArgvCase(verifier, dir, ['--registry', './' + name]).status, 0);
+});
+
+// Exact synthetic receipt-category paths satisfy the real tree metadata checks.
+// No operational receipt or repository receipt is read or executed.
+const receiptPaths = ['receipts/run.md', 'fixture/receipts/run.md', 'fixture/Receipts/run.md'];
+const similarPaths = ['fixture/receipts.txt', 'receipts-source/a.cjs'];
+const receiptBytes = Buffer.from('SYNTHETIC CATEGORY FIXTURE ONLY; NOT AN OPERATIONAL RECEIPT.\n');
+const receiptObjects = [...receiptPaths, ...similarPaths].map(name => ({ name, mode: '100644', oid: git(['hash-object', '-w', '--stdin'], receiptBytes) }));
+const receiptCommit = git(['commit-tree', tree([...objects, ...receiptObjects])], Buffer.from('Synthetic receipt-category metadata only\n'));
+function prepareReceipts(files) {
+  const map = packageMap(files); map.payloadSourceCommit = receiptCommit;
+  const frame = Buffer.from(files.slice().sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))).map(name => `${sha(data.has(name) ? data.get(name) : receiptBytes)}  ${name}\n`).join(''));
+  const dir = prepare(map, frame); changeProof(dir, proof => { proof.payloadSourceCommit = receiptCommit; }); return dir;
+}
+for (const tool of [builder, verifier]) {
+  for (const name of receiptPaths) {
+    test(`${tool} rejects exact receipt segment ${name} before all payload bodies`, () => {
+      const result = run(tool, prepareReceipts(['fixture/a.cjs', name])); rejectedWithoutBodies(result);
+      if (tool === builder) assert.deepEqual(result.calls, []);
+      else assert.equal(result.output.counters.manifest_prohibited_path_count, 2);
+    });
+  }
+  for (const name of similarPaths) {
+    test(`${tool} retains non-receipt exact segment ${name}`, () => {
+      const result = run(tool, prepareReceipts([name])); assert.equal(result.status, 0); assert.deepEqual(result.reads, [name]);
+    });
+  }
+}
