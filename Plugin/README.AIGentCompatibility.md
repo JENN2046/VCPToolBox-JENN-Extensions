@@ -28,8 +28,9 @@ synthetic inputs and keep operating-system read permissions in place.
 `HealthCheck` reports module/adapter capability information; it does not
 prove service readiness or authorize external effects. The wrappers import
 legacy modules whose environment-based settings remain unchanged. The
-Workflow module only drops an unused `uuid` import, so its optional adapter
-does not need that unreferenced dependency. No workflow-template filesystem
+Workflow module drops an unused `uuid` import and accepts an instance logger
+(default: `console`). Its optional wrapper supplies a fixed silent logger
+without replacing the host process console methods. No workflow-template filesystem
 scan, real generation, provider call or training is performed by these
 optional actions.
 
@@ -39,8 +40,10 @@ Run the exact regressions with Node.js 22:
 node --test tests/aigent-quality-compat.test.cjs tests/aigent-style-compat.test.cjs tests/aigent-workflow-compat.test.cjs tests/aigent-wrapper-boundary.test.cjs
 ```
 
-The original 28 tests remain unchanged. The additional 37 cases cover actual
+The command runs 73 tests. The original 28 tests remain unchanged. The additional 37 cases cover actual
 stdin entrypoints, byte/chunk/EOF boundaries, explicit path grants, canonical path handoff, symlink
 escapes and granted synthetic positive paths. They create temporary fixtures
-and Node child processes. They do not validate real assets, registration,
+and Node child processes. Eight further regressions cover concurrent logging,
+default and injected instance loggers, failure propagation and stdio output.
+They do not validate real assets, registration,
 provider integration, production deployment or the entire repository suite.

@@ -6,6 +6,7 @@ const MAX_INPUT_BYTES = 16 * 1024;
 const WorkflowOrchestratorAgent = require('./WorkflowOrchestrator.js');
 
 const ALLOWED_ACTIONS = new Set(['HealthCheck', 'ListTemplates', 'ExecuteWorkflow']);
+const SILENT_LOGGER = Object.freeze({ log() {}, warn() {}, error() {} });
 
 function responseError(code, message) {
   return {
@@ -47,31 +48,13 @@ function realExecutionRequested(request) {
     || request.execute_workflow === true;
 }
 
-async function silenceConsole(fn) {
-  const original = {
-    log: console.log,
-    warn: console.warn,
-    error: console.error
-  };
-  console.log = () => {};
-  console.warn = () => {};
-  console.error = () => {};
-  try {
-    return await fn();
-  } finally {
-    console.log = original.log;
-    console.warn = original.warn;
-    console.error = original.error;
-  }
-}
-
 async function handleRequest(request) {
   const shapeError = assertPlainRequest(request);
   if (shapeError) return shapeError;
   const action = actionFromRequest(request);
   if (!action.ok) return action.response;
 
-  const agent = new WorkflowOrchestratorAgent();
+  const agent = new WorkflowOrchestratorAgent({ logger: SILENT_LOGGER });
   if (action.action === 'HealthCheck') {
     return {
       status: 'success',
@@ -106,11 +89,11 @@ async function handleRequest(request) {
   }
 
   const userInput = String(request.user_input || request.description || 'synthetic ecommerce studio product image').trim();
-  const result = await silenceConsole(() => agent.execute(userInput, {
+  const result = await agent.execute(userInput, {
     simulate: true,
     auto_execute: false,
     external_effects: false
-  }));
+  });
   return {
     status: 'success',
     result: {
