@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "packageId": "jenn.photostudio.readonly-api-adapters",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "protocol": "CANONICAL_JSONL_V1",
+  "allowedActions": [
+    "build_delivery_operator_report_from_snapshots",
+    "build_delivery_operator_report_from_operations_snapshot",
+    "build_weekly_project_digest_from_operations_snapshot",
+    "build_project_field_audit_from_operations_snapshot"
+  ],
+  "profiles": [
+    {
+      "creationId": "jenn.photo-studio.plugin-delivery-operator-report",
+      "displayName": "PhotoStudioDeliveryOperatorReport",
+      "status": "PARTIAL_READ_API_ADAPTER_PROFILE",
+      "projectionImplemented": true,
+      "syntheticOnly": true,
+      "runtimeActionEligible": true,
+      "fullParity": false,
+      "realBackendAuthorized": false,
+      "preservedCompatibilityAction": "build_delivery_operator_report_from_snapshots",
+      "canonicalOperationsAction": "build_delivery_operator_report_from_operations_snapshot",
+      "sourceEndpoints": [
+        "/operations/deliveries"
+      ],
+      "legacySyntheticEndpoints": [
+        "/command-center/v2",
+        "/deliveries/:deliveryId/readiness"
+      ],
+      "missingLegacyFields": [
+        "retry_after_date",
+        "delivery_error",
+        "delivery_attempts",
+        "delivery_acknowledged",
+        "external_export_id/export_key semantics",
+        "complete external export queue semantics"
+      ]
+    },
+    {
+      "creationId": "jenn.photo-studio.plugin-weekly-project-digest",
+      "displayName": "PhotoStudioWeeklyProjectDigest",
+      "status": "PARTIAL_READ_API_ADAPTER_PROFILE",
+      "projectionImplemented": true,
+      "syntheticOnly": true,
+      "runtimeEligible": true,
+      "runtimeActionEligible": true,
+      "fullParity": false,
+      "realBackendAuthorized": false,
+      "canonicalOperationsAction": "build_weekly_project_digest_from_operations_snapshot",
+      "sourceEndpoints": [
+        "/operations/projects/weekly"
+      ],
+      "missingLegacyFields": [
+        "legacy status-log exact semantics",
+        "legacy normalized project-name semantics",
+        "legacy arbitrary local-store transition rows"
+      ]
+    },
+    {
+      "creationId": "jenn.photo-studio.plugin-field-audit",
+      "displayName": "PhotoStudioFieldAudit",
+      "status": "PARTIAL_READ_API_ADAPTER_PROFILE",
+      "projectionImplemented": true,
+      "syntheticOnly": true,
+      "runtimeEligible": true,
+      "runtimeActionEligible": true,
+      "fullParity": false,
+      "realBackendAuthorized": false,
+      "canonicalOperationsAction": "build_project_field_audit_from_operations_snapshot",
+      "sourceEndpoints": [
+        "/operations/projects/field-quality"
+      ],
+      "missingLegacyFields": [
+        "normalized_project_name",
+        "budget"
+      ]
+    }
+  ]
+}
