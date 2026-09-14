@@ -43,28 +43,30 @@ function assertPlainRequest(request) {
 
 function realInside(root, child) {
   const resolvedRoot = fs.realpathSync(path.resolve(root));
-  if (!fs.statSync(resolvedRoot).isDirectory()) return false;
+  if (!fs.statSync(resolvedRoot).isDirectory()) return null;
   const resolvedChild = fs.realpathSync(path.resolve(child));
-  return resolvedChild === resolvedRoot || resolvedChild.startsWith(`${resolvedRoot}${path.sep}`);
+  return resolvedChild === resolvedRoot || resolvedChild.startsWith(`${resolvedRoot}${path.sep}`)
+    ? resolvedChild : null;
 }
 
-function assertImageGrant(request, env) {
-  const imagePath = request.image_path || request.path;
-  if (typeof imagePath !== 'string' || !imagePath.trim()
-      || (request.image_path != null && typeof request.image_path !== 'string')) {
+function resolveImageGrant(request, env) {
+  const imagePath = [request.image_path, request.path]
+    .find((value) => typeof value === 'string' && value.trim());
+  if (imagePath === undefined) {
     return responseError('REQUEST_REJECTED', 'image_path must be a non-empty string for InspectImage');
   }
   if (typeof env.AIGENT_QUALITY_ALLOWED_IMAGE_ROOT !== 'string' || !env.AIGENT_QUALITY_ALLOWED_IMAGE_ROOT.trim()) {
     return responseError('PATH_GRANT_REQUIRED', 'InspectImage requires an explicit allowed image root.');
   }
   try {
-    if (!realInside(env.AIGENT_QUALITY_ALLOWED_IMAGE_ROOT, imagePath.trim())) {
-      return responseError('PATH_OUTSIDE_GRANT', 'image_path is outside the authorized synthetic root');
+    const canonicalPath = realInside(env.AIGENT_QUALITY_ALLOWED_IMAGE_ROOT, imagePath.trim());
+    if (!canonicalPath || canonicalPath !== canonicalPath.trim()) {
+      return responseError('PATH_OUTSIDE_GRANT', 'image_path is outside the authorized synthetic root or changes under core normalization');
     }
+    return canonicalPath;
   } catch (error) {
     return responseError('PATH_OUTSIDE_GRANT', error.message);
   }
-  return null;
 }
 
 function queueEntryFromReport(report) {
@@ -116,9 +118,9 @@ async function handleRequest(request, env = process.env) {
   }
 
   if (action.action === 'InspectImage') {
-    const grantError = assertImageGrant(request, env);
-    if (grantError) return grantError;
-    request = { ...request, image_path: (request.image_path || request.path).trim() };
+    const imagePath = resolveImageGrant(request, env);
+    if (typeof imagePath !== 'string') return imagePath;
+    request = { ...request, image_path: imagePath };
   }
 
   return quality.handleRequest({ ...request, action: action.action });

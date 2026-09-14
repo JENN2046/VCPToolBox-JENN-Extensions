@@ -88,7 +88,12 @@ async function handleRequest(request) {
     return responseError('REAL_EXECUTION_DENIED', 'ExecuteWorkflow is simulate-only in FS2F compatibility mode');
   }
 
-  const userInput = String(request.user_input || request.description || 'synthetic ecommerce studio product image').trim();
+  const prompt = [request.user_input, request.description]
+    .find((value) => typeof value === 'string' && value.trim());
+  if (prompt === undefined) {
+    return responseError('REQUEST_REJECTED', 'ExecuteWorkflow requires a non-empty user_input or description string');
+  }
+  const userInput = prompt.trim();
   const result = await agent.execute(userInput, {
     simulate: true,
     auto_execute: false,

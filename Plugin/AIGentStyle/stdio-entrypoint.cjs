@@ -56,12 +56,13 @@ function assertPlainRequest(request) {
 
 function realInside(root, child) {
   const resolvedRoot = fs.realpathSync(path.resolve(root));
-  if (!fs.statSync(resolvedRoot).isDirectory()) return false;
+  if (!fs.statSync(resolvedRoot).isDirectory()) return null;
   const resolvedChild = fs.realpathSync(path.resolve(child));
-  return resolvedChild === resolvedRoot || resolvedChild.startsWith(`${resolvedRoot}${path.sep}`);
+  return resolvedChild === resolvedRoot || resolvedChild.startsWith(`${resolvedRoot}${path.sep}`)
+    ? resolvedChild : null;
 }
 
-function assertDatasetGrant(request, env) {
+function resolveDatasetGrant(request, env) {
   if (typeof request.dataset_path !== 'string' || !request.dataset_path.trim()) {
     return responseError('REQUEST_REJECTED', 'PrepareDataset requires an explicit dataset_path.');
   }
@@ -69,13 +70,14 @@ function assertDatasetGrant(request, env) {
     return responseError('PATH_GRANT_REQUIRED', 'PrepareDataset requires an explicit allowed dataset root.');
   }
   try {
-    if (!realInside(env.AIGENT_STYLE_ALLOWED_DATASET_ROOT, request.dataset_path)) {
+    const canonicalPath = realInside(env.AIGENT_STYLE_ALLOWED_DATASET_ROOT, request.dataset_path);
+    if (!canonicalPath) {
       return responseError('PATH_OUTSIDE_GRANT', 'dataset_path is outside the authorized synthetic root');
     }
+    return canonicalPath;
   } catch (error) {
     return responseError('PATH_OUTSIDE_GRANT', error.message);
   }
-  return null;
 }
 
 async function handleRequest(request, env = process.env) {
@@ -84,8 +86,9 @@ async function handleRequest(request, env = process.env) {
   const action = actionFromRequest(request);
   if (!action.ok) return action.response;
   if (action.action === 'PrepareDataset') {
-    const grantError = assertDatasetGrant(request, env);
-    if (grantError) return grantError;
+    const datasetPath = resolveDatasetGrant(request, env);
+    if (typeof datasetPath !== 'string') return datasetPath;
+    request = { ...request, dataset_path: datasetPath };
   }
 
   return style.handleRequest({ ...request, action: action.action });

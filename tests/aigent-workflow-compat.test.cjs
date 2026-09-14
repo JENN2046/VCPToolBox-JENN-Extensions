@@ -162,8 +162,8 @@ test('concurrent rejection propagates without corrupting the host console', asyn
       return new Promise((resolve, reject) => gates.push({ resolve, reject }));
     };
     try {
-      const first = entrypoint.handleRequest({ action: 'ExecuteWorkflow' });
-      const second = entrypoint.handleRequest({ action: 'ExecuteWorkflow' });
+      const first = entrypoint.handleRequest({ action: 'ExecuteWorkflow', user_input: 'synthetic portrait' });
+      const second = entrypoint.handleRequest({ action: 'ExecuteWorkflow', user_input: 'synthetic portrait' });
       const settled = Promise.allSettled([first, second]);
       assert.equal(gates.length, 2);
       gates[0].resolve({ success: true, simulated: true });
