@@ -77,7 +77,10 @@ function cleanString(value) {
 }
 
 function isExplicitIso(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value);
+  const match = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.exec(value);
+  if (!match || match[0] !== value) return false;
+  const [hour, minute, second] = value.slice(11, 19).split(':').map(Number);
+  return isDateOnly(value.slice(0, 10)) && hour <= 23 && minute <= 59 && second <= 59;
 }
 
 function isDateOnly(value) {
@@ -131,7 +134,13 @@ function retryDate(snapshot) {
 }
 
 function scheduleDate(snapshot) {
-  return cleanString(snapshot.schedule_date) || retryDate(snapshot);
+  const value = snapshot.schedule_date;
+  if (value === undefined || value === null) return retryDate(snapshot);
+  const date = cleanString(value);
+  if (typeof value !== 'string' || (date && !isDateOnly(date))) {
+    throw new TypeError('schedule_date must be a valid YYYY-MM-DD date when supplied.');
+  }
+  return date || retryDate(snapshot);
 }
 
 function updatedAt(snapshot) {

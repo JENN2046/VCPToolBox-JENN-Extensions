@@ -84,8 +84,19 @@ function optionalString(value) {
   return cleanString(value);
 }
 
+function isDateOnly(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= monthDays[month - 1];
+}
+
 function isExplicitIso(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value);
+  const match = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.exec(value);
+  if (!match || match[0] !== value) return false;
+  const [hour, minute, second] = value.slice(11, 19).split(':').map(Number);
+  return isDateOnly(value.slice(0, 10)) && hour <= 23 && minute <= 59 && second <= 59;
 }
 
 function validateGeneratedAt(value) {
@@ -296,7 +307,7 @@ function buildClientReplyDraftFromSnapshot(input) {
     }),
     snapshotScope: {
       projectId,
-      customerId: optionalString(customerSnapshot.customer_id || projectSnapshot.customer_id),
+      customerId: customerId || projectCustomerId,
       contextType,
       tone
     },
