@@ -59,5 +59,22 @@
   "compatibility": {
     "vcpVersion": ">=1.0.0",
     "nodeVersion": ">=14.0.0"
+  },
+  "externalRuntimeCompatibility": {
+    "adapterProfile": "LEGACY_FLAT_ACTION_V1",
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "executionAuthorized": false,
+    "runtimeEligible": false,
+    "isolatedProcessRequired": true,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "secretValueIncluded": false,
+    "credentialValueIncluded": false,
+    "hostEnvInheritanceAllowed": false,
+    "classification": "PRESERVED_TRIAL_NO_EXECUTION",
+    "trialOf": "AIGentQuality",
+    "trialExecutionAllowed": false,
+    "futureGate": "NONE_TRIAL_PRESERVED"
   }
 }
