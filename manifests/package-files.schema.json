@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jenn.example/schemas/package-files.schema.json",
+  "title": "Jenn External Runtime Package Files",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "payloadSourceCommit",
+    "packages"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "payloadSourceCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "packageId",
+          "creationIds",
+          "root",
+          "payloadClass",
+          "runtimeEligible",
+          "files",
+          "reviewExceptions",
+          "notes"
+        ],
+        "properties": {
+          "packageId": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]+$"
+          },
+          "creationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "root": {
+            "type": "string"
+          },
+          "payloadClass": {
+            "enum": [
+              "runtime_source",
+              "source_preservation",
+              "fixture",
+              "support_metadata"
+            ]
+          },
+          "runtimeEligible": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "reviewExceptions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "reason",
+                "riskClassification",
+                "evidenceReference",
+                "runtimeEligible"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "riskClassification": {
+                  "enum": [
+                    "reviewed_source_name_only",
+                    "provider_source_no_secret",
+                    "memory_source_no_private_data",
+                    "photo_studio_source_no_private_data",
+                    "auth_source_no_secret"
+                  ]
+                },
+                "evidenceReference": {
+                  "type": "string"
+                },
+                "runtimeEligible": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
