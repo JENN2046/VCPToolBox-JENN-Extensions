@@ -94,6 +94,9 @@ async function handleRequest(request) {
     auto_execute: false,
     external_effects: false
   });
+  if (result.success === false) {
+    return responseError('REQUEST_REJECTED', result.error);
+  }
   return {
     status: 'success',
     result: {

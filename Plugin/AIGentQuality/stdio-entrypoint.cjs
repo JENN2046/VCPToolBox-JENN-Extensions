@@ -87,7 +87,7 @@ function buildRetryPlanFromReport(report) {
   return {
     dry_run: true,
     source: 'synthetic_report',
-    overall_verdict: report.verdict || 'review',
+    overall_verdict: needsAction && report.verdict === 'pass' ? 'review' : report.verdict || 'review',
     retry_count: needsAction ? 1 : 0,
     retry_queue: needsAction ? [queueEntryFromReport(report)] : [],
     safety: {
