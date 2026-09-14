@@ -10,7 +10,6 @@
 
 const path = require('path');
 const fs = require('fs').promises;
-const { v4: uuidv4 } = require('uuid');
 
 class WorkflowOrchestratorAgent {
   constructor(options = {}) {
@@ -20,6 +19,7 @@ class WorkflowOrchestratorAgent {
     // 依赖注入
     this.comfyUIGen = options.comfyUIGen;
     this.promptEngineer = options.promptEngineer;
+    this.logger = options.logger || console;
 
     // 工作流模板库
     this.workflowTemplates = {
@@ -132,7 +132,7 @@ class WorkflowOrchestratorAgent {
    * 初始化
    */
   async initialize() {
-    console.log('[WorkflowOrchestrator] Initializing...');
+    this.logger.log('[WorkflowOrchestrator] Initializing...');
 
     // 检查工作流模板目录
     await this._loadWorkflowTemplates();
@@ -150,20 +150,20 @@ class WorkflowOrchestratorAgent {
       const files = await fs.readdir(workflowsDir);
       const jsonFiles = files.filter(f => f.endsWith('.json'));
 
-      console.log(`[WorkflowOrchestrator] Found ${jsonFiles.length} workflow templates`);
+      this.logger.log(`[WorkflowOrchestrator] Found ${jsonFiles.length} workflow templates`);
 
       for (const file of jsonFiles) {
         const templateName = file.replace('.json', '');
         try {
           const template = await fs.readFile(path.join(workflowsDir, file), 'utf-8');
           const workflow = JSON.parse(template);
-          console.log(`  - ${templateName}: OK`);
+          this.logger.log(`  - ${templateName}: OK`);
         } catch (e) {
-          console.warn(`  - ${templateName}: Failed - ${e.message}`);
+          this.logger.warn(`  - ${templateName}: Failed - ${e.message}`);
         }
       }
     } catch (e) {
-      console.warn('[WorkflowOrchestrator] Could not load workflow templates:', e.message);
+      this.logger.warn('[WorkflowOrchestrator] Could not load workflow templates:', e.message);
     }
   }
 
@@ -176,14 +176,14 @@ class WorkflowOrchestratorAgent {
   async execute(userInput, options = {}) {
     try {
       // 1. 需求解析
-      console.log('[WorkflowOrchestrator] Parsing request...');
+      this.logger.log('[WorkflowOrchestrator] Parsing request...');
       const requirements = await this.parseRequirements(userInput);
-      console.log('Requirements:', requirements);
+      this.logger.log('Requirements:', requirements);
 
       // 2. 模板匹配
-      console.log('[WorkflowOrchestrator] Matching template...');
+      this.logger.log('[WorkflowOrchestrator] Matching template...');
       const template = this.matchTemplate(requirements);
-      console.log('Matched template:', template);
+      this.logger.log('Matched template:', template);
 
       if (!template) {
         return {
@@ -194,13 +194,13 @@ class WorkflowOrchestratorAgent {
       }
 
       // 3. 参数填充
-      console.log('[WorkflowOrchestrator] Filling parameters...');
+      this.logger.log('[WorkflowOrchestrator] Filling parameters...');
       const workflowParams = this.fillParameters(requirements, template);
-      console.log('Parameters:', workflowParams);
+      this.logger.log('Parameters:', workflowParams);
 
       // 4. 执行工作流（如果 ComfyUI 可用）
       if (this.comfyUIGen && typeof this.comfyUIGen.execute === 'function') {
-        console.log('[WorkflowOrchestrator] Executing workflow...');
+        this.logger.log('[WorkflowOrchestrator] Executing workflow...');
         const result = await this.comfyUIGen.execute(workflowParams);
         return {
           success: true,
@@ -221,7 +221,7 @@ class WorkflowOrchestratorAgent {
       };
 
     } catch (error) {
-      console.error('[WorkflowOrchestrator] Error:', error);
+      this.logger.error('[WorkflowOrchestrator] Error:', error);
       return {
         success: false,
         error: error.message
