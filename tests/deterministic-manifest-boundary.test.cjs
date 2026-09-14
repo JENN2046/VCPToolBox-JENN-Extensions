@@ -414,3 +414,111 @@ for (const tool of [builder, verifier]) {
     });
   }
 }
+
+// PR14 output/root follow-up: actual CLI with only temporary synthetic inputs.
+function failedRegistryPreservesOutputs(kind, existing) {
+  const dir = prepare(packageMap(['fixture/a.cjs']));
+  const outputDir = path.join(dir, 'outputs');
+  const manifest = path.join(outputDir, 'manifest.sha256');
+  const attestation = path.join(outputDir, 'attestation.json');
+  const oldManifest = Buffer.from('SYNTHETIC PREVIOUS MANIFEST\n');
+  const oldAttestation = Buffer.from('SYNTHETIC PREVIOUS ATTESTATION\n');
+  if (existing) {
+    fs.mkdirSync(outputDir);
+    fs.writeFileSync(manifest, oldManifest);
+    fs.writeFileSync(attestation, oldAttestation);
+  }
+  const registry = path.join(dir, 'registry.json');
+  if (kind === 'directory') fs.mkdirSync(registry);
+  if (kind === 'injected-eacces') fs.writeFileSync(registry, '{"synthetic":true}\n');
+  const events = path.join(dir, 'output-events.txt');
+  fs.writeFileSync(events, '');
+  const hook = path.join(dir, 'output-monitor.cjs');
+  // Missing and directory reads forward real errors. EACCES is injected for this
+  // one synthetic registry so the test is independent of the namespace's UID.
+  fs.writeFileSync(hook, `const fs = require('node:fs');
+const read = fs.readFileSync, write = fs.writeFileSync, mkdir = fs.mkdirSync;
+fs.readFileSync = function(file, ...args) {
+  if (file === ${JSON.stringify(registry)}) {
+    fs.appendFileSync(${JSON.stringify(events)}, 'R');
+    if (${JSON.stringify(kind)} === 'injected-eacces') {
+      const error = new Error('Synthetic registry read denied'); error.code = 'EACCES'; throw error;
+    }
+  }
+  return Reflect.apply(read, this, [file, ...args]);
+};
+fs.writeFileSync = function(file, ...args) {
+  if ([${JSON.stringify(manifest)}, ${JSON.stringify(attestation)}].includes(file)) fs.appendFileSync(${JSON.stringify(events)}, 'W');
+  return Reflect.apply(write, this, [file, ...args]);
+};
+fs.mkdirSync = function(file, ...args) {
+  if (file === ${JSON.stringify(outputDir)}) fs.appendFileSync(${JSON.stringify(events)}, 'M');
+  return Reflect.apply(mkdir, this, [file, ...args]);
+};
+`);
+  const result = cp.spawnSync(process.execPath, [
+    '--no-addons', '--require', monitor, '--require', hook, path.join(tools, builder),
+    '--package-files', path.join(dir, 'map.json'), '--manifest', manifest,
+    '--attestation', attestation, '--registry', registry
+  ], { cwd: repo, env, timeout: 10000, maxBuffer: 1048576 });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null);
+  assert.equal(result.status, 1, 'failed registry must reject the build');
+  assert.equal(result.stdout.length, 0, 'no successful build response');
+  const observedEvents = fs.readFileSync(events, 'utf8');
+  assert.equal(observedEvents.replace(/[^R]/g, ''), 'R', 'the supplied registry read was attempted once');
+  if (existing) {
+    assert.deepEqual(fs.readFileSync(manifest), oldManifest, 'previous manifest bytes preserved');
+    assert.deepEqual(fs.readFileSync(attestation), oldAttestation, 'previous attestation bytes preserved');
+  } else {
+    assert.equal(fs.existsSync(outputDir), false, 'failed input does not create the output directory');
+  }
+  assert.equal(observedEvents, 'R', 'no output mkdir or write before registry validation');
+}
+for (const kind of ['missing', 'directory', 'injected-eacces']) {
+  for (const existing of [true, false]) {
+    test(`builder ${kind} registry failure preserves ${existing ? 'existing outputs' : 'absent output directory'}`, () => {
+      failedRegistryPreservesOutputs(kind, existing);
+    });
+  }
+}
+
+function rootMap(roots) {
+  const files = ['fixture/a.cjs', 'outside.txt'];
+  const map = packageMap([files[0]]);
+  map.packages = roots.map((root, index) => ({
+    ...map.packages[0], root, packageId: 'synthetic-root-' + index, files: [files[index]]
+  }));
+  return { map, files: files.slice(0, roots.length) };
+}
+for (const tool of [builder, verifier]) {
+  for (const root of ['./fixture', 'fixture/.', 'fixture//child', 'fixture/./child', '.', 'fixture//child///']) {
+    test(`${tool} rejects noncanonical root ${root} before any Git or payload read`, () => {
+      const { map, files } = rootMap([root]);
+      const result = run(tool, prepare(map, manifestFrame(files)));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+  for (const roots of [['fixture', './fixture'], ['fixture/child', 'fixture//child'], ['fixture', './fixture/child']]) {
+    test(`${tool} rejects aliased overlapping roots ${roots.join(' vs ')} before any Git or payload read`, () => {
+      const { map, files } = rootMap(roots);
+      const result = run(tool, prepare(map, manifestFrame(files)));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+  for (const root of ['fixture/', 'fixture///', 'fixture/中文.v1', 'fixture.v1', 'fixture / child']) {
+    test(`${tool} preserves existing exact-root metadata ${root}`, () => {
+      const { map, files } = rootMap([root]);
+      const dir = prepare(map, manifestFrame(files)); const result = run(tool, dir);
+      assert.equal(result.status, 0); assert.deepEqual(result.reads, files);
+      assert.deepEqual(fs.readFileSync(path.join(dir, 'manifest.sha256')), manifestFrame(files));
+    });
+  }
+  for (const roots of [['fixture/', 'fixture///'], ['fixture///', 'fixture/child/']]) {
+    test(`${tool} retains normalized root overlap rejection ${roots.join(' vs ')}`, () => {
+      const { map, files } = rootMap(roots);
+      const result = run(tool, prepare(map, manifestFrame(files)));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+}
+

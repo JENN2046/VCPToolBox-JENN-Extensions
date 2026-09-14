@@ -141,7 +141,7 @@ function validatePackageSchema(packageFiles, failures) {
     if (packageIds.has(pkg.packageId)) failures.push(`${label}.packageId is duplicated`);
     packageIds.add(pkg.packageId);
     if (!Array.isArray(pkg.creationIds)) failures.push(`${label}.creationIds must be an array`);
-    if (!isRelativeExactPath(pkg.root || '')) failures.push(`${label}.root must be an exact relative POSIX path`);
+    if (!isRelativeExactPath(pkg.root || '') || pkg.root.replace(/\/+$/, '').split('/').some(segment => segment === '.' || segment === '')) failures.push(`${label}.root must be an exact relative POSIX path`);
     else roots.push({ packageId: pkg.packageId, root: pkg.root.replace(/\/+$/, '') });
     if (!payloadClasses.has(pkg.payloadClass)) failures.push(`${label}.payloadClass is invalid`);
     if (typeof pkg.runtimeEligible !== 'boolean') failures.push(`${label}.runtimeEligible must be boolean`);
@@ -258,7 +258,6 @@ function main() {
   paths.forEach((filePath) => getTreeEntry(packageFiles.payloadSourceCommit, filePath));
   const lines = paths.map((filePath) => `${hashCommittedBlob(packageFiles.payloadSourceCommit, filePath)}  ${filePath}`);
   const manifestText = `${lines.join('\n')}\n`;
-  writeLf(args.manifest, manifestText);
 
   const registryHash = args.registry ? crypto.createHash('sha256').update(fs.readFileSync(args.registry)).digest('hex') : '';
   const attestation = {
@@ -277,6 +276,7 @@ function main() {
     privateDataIncluded: false,
     databaseStateIncluded: false
   };
+  writeLf(args.manifest, manifestText);
   writeLf(args.attestation, `${JSON.stringify(attestation, null, 2)}\n`);
   console.log(JSON.stringify({ manifestEntryCount: lines.length, manifestSha256: attestation.manifestSha256 }, null, 2));
 }
