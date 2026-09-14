@@ -86,7 +86,98 @@ function comparePosixBytewise(a, b) {
   return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }
 
+function isRelativeExactPath(filePath) {
+  return typeof filePath === 'string'
+    && filePath.length > 0
+    && !filePath.includes('\\')
+    && !filePath.startsWith('/')
+    && !filePath.startsWith('//')
+    && !/^[A-Za-z]:/.test(filePath)
+    && !filePath.split('/').includes('..')
+    && !/[*?{}]/.test(filePath);
+}
+
+function validatePackageSchema(packageFiles, failures) {
+  if (!isPlainObject(packageFiles)) {
+    failures.push('PACKAGE_FILES must be an object');
+    return [];
+  }
+  if (packageFiles.schemaVersion !== 1) failures.push('PACKAGE_FILES schemaVersion must be 1');
+  if (!/^[a-f0-9]{40}$/.test(packageFiles.payloadSourceCommit || '')) failures.push('Invalid payloadSourceCommit');
+  if (!Array.isArray(packageFiles.packages)) {
+    failures.push('PACKAGE_FILES packages must be an array');
+    return [];
+  }
+
+  const packageKeys = ['packageId', 'creationIds', 'root', 'payloadClass', 'runtimeEligible', 'files', 'reviewExceptions', 'notes'];
+  const reviewKeys = ['path', 'reason', 'riskClassification', 'evidenceReference', 'runtimeEligible'];
+  const payloadClasses = new Set(['runtime_source', 'source_preservation', 'fixture', 'support_metadata']);
+  const riskClasses = new Set([
+    'reviewed_source_name_only',
+    'provider_source_no_secret',
+    'memory_source_no_private_data',
+    'photo_studio_source_no_private_data',
+    'auth_source_no_secret'
+  ]);
+  const packageIds = new Set();
+  const roots = [];
+
+  for (const [index, pkg] of packageFiles.packages.entries()) {
+    const label = `packages[${index}]`;
+    if (!isPlainObject(pkg)) {
+      failures.push(`${label} must be an object`);
+      continue;
+    }
+    for (const key of packageKeys) {
+      if (!(key in pkg)) failures.push(`${label} missing ${key}`);
+    }
+    for (const key of Object.keys(pkg)) {
+      if (!packageKeys.includes(key)) failures.push(`${label} has unsupported property ${key}`);
+    }
+    if (!/^[a-z0-9._-]+$/.test(pkg.packageId || '')) failures.push(`${label}.packageId is invalid`);
+    if (packageIds.has(pkg.packageId)) failures.push(`${label}.packageId is duplicated`);
+    packageIds.add(pkg.packageId);
+    if (!Array.isArray(pkg.creationIds)) failures.push(`${label}.creationIds must be an array`);
+    if (!isRelativeExactPath(pkg.root || '')) failures.push(`${label}.root must be an exact relative POSIX path`);
+    else roots.push({ packageId: pkg.packageId, root: pkg.root.replace(/\/+$/, '') });
+    if (!payloadClasses.has(pkg.payloadClass)) failures.push(`${label}.payloadClass is invalid`);
+    if (typeof pkg.runtimeEligible !== 'boolean') failures.push(`${label}.runtimeEligible must be boolean`);
+    if (!Array.isArray(pkg.files) || pkg.files.length === 0) failures.push(`${label}.files must be a non-empty array`);
+    if (!Array.isArray(pkg.reviewExceptions)) failures.push(`${label}.reviewExceptions must be an array`);
+    for (const [reviewIndex, review] of (Array.isArray(pkg.reviewExceptions) ? pkg.reviewExceptions : []).entries()) {
+      const reviewLabel = `${label}.reviewExceptions[${reviewIndex}]`;
+      if (!isPlainObject(review)) {
+        failures.push(`${reviewLabel} must be an object`);
+        continue;
+      }
+      for (const key of reviewKeys) {
+        if (!(key in review)) failures.push(`${reviewLabel} missing ${key}`);
+      }
+      for (const key of Object.keys(review)) {
+        if (!reviewKeys.includes(key)) failures.push(`${reviewLabel} has unsupported property ${key}`);
+      }
+      if (!riskClasses.has(review.riskClassification)) failures.push(`${reviewLabel}.riskClassification is invalid`);
+      if (typeof review.runtimeEligible !== 'boolean') failures.push(`${reviewLabel}.runtimeEligible must be boolean`);
+    }
+  }
+
+  for (let i = 0; i < roots.length; i += 1) {
+    for (let j = i + 1; j < roots.length; j += 1) {
+      const a = roots[i].root;
+      const b = roots[j].root;
+      if (a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)) {
+        failures.push(`Ambiguous package roots: ${roots[i].packageId}=${a}, ${roots[j].packageId}=${b}`);
+      }
+    }
+  }
+
+  return packageFiles.packages.filter(isPlainObject);
+}
+
 function validatePackageFiles(packageFiles) {
+  const failures = [];
+  validatePackageSchema(packageFiles, failures);
+  if (failures.length > 0) throw new Error(failures.join('; '));
   if (!isPlainObject(packageFiles)) throw new Error('PACKAGE_FILES must be an object');
   if (packageFiles.schemaVersion !== 1) throw new Error('schemaVersion must be 1');
   if (!/^[a-f0-9]{40}$/.test(packageFiles.payloadSourceCommit || '')) throw new Error('payloadSourceCommit must be a 40-char lowercase SHA');

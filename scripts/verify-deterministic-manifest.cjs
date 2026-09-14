@@ -177,8 +177,10 @@ function blobSha256(commit, filePath) {
 function parseManifest(raw) {
   if (raw.includes('\r')) throw new Error('Manifest must use LF line endings only');
   if (!raw.endsWith('\n')) throw new Error('Manifest must end with one newline');
+  // The builder emits exactly one LF for a zero-entry package set.
+  if (raw === '\n') return [];
   const lines = raw.slice(0, -1).split('\n');
-  return lines.filter(Boolean).map((line) => {
+  return lines.map((line) => {
     const match = line.match(/^([a-f0-9]{64})  ([^\n]+)$/);
     if (!match) throw new Error(`Invalid manifest line format: ${line}`);
     return { sha256: match[1], path: match[2] };
@@ -289,17 +291,33 @@ function main() {
     return;
   }
 
+  if (!isPlainObject(attestation) || attestation.schemaVersion !== 1) {
+    counters.attestation_mismatch_count += 1;
+    finish();
+    return;
+  }
+
   const manifestSha256 = sha256Buffer(Buffer.from(manifestRaw, 'utf8'));
   const packageFilesSha256 = sha256Buffer(Buffer.from(packageRaw, 'utf8'));
-  const registrySha256 = args.registry ? sha256Buffer(fs.readFileSync(args.registry)) : '';
   if (attestation.payloadSourceCommit !== packageFiles.payloadSourceCommit) counters.attestation_mismatch_count += 1;
   if (attestation.packageFilesSha256 !== packageFilesSha256) counters.attestation_mismatch_count += 1;
   if (attestation.manifestSha256 !== manifestSha256) counters.attestation_mismatch_count += 1;
   if (attestation.manifestEntryCount !== manifestEntries.length) counters.attestation_mismatch_count += 1;
-  if (args.registry && attestation.creationRegistrySha256 !== registrySha256) counters.attestation_mismatch_count += 1;
   for (const key of ['defaultRuntimeAuthorization', 'pluginExecutionAuthorized', 'providerExecutionAuthorized', 'bridgeExecutionAuthorized', 'privateDataIncluded', 'databaseStateIncluded']) {
     if (attestation[key] !== false) counters.attestation_mismatch_count += 1;
   }
+
+  // All independent proof fields and the required registry binding must pass first.
+  const registryBindingValid = args.registry
+    ? typeof attestation.creationRegistrySha256 === 'string' && /^[a-f0-9]{64}$/.test(attestation.creationRegistrySha256)
+    : attestation.creationRegistrySha256 === '';
+  if (!registryBindingValid) counters.attestation_mismatch_count += 1;
+  if (Object.values(counters).some((value) => value !== 0)) {
+    finish();
+    return;
+  }
+  const registrySha256 = args.registry ? sha256Buffer(fs.readFileSync(args.registry)) : '';
+  if (attestation.creationRegistrySha256 !== registrySha256) counters.attestation_mismatch_count += 1;
 
   if (Object.values(counters).every((value) => value === 0)) {
     for (const entry of hashCandidates) {

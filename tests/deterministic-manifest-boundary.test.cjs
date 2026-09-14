@@ -86,7 +86,7 @@ function prepare(map, manifest) {
   const raw = Buffer.from(JSON.stringify(map, null, 2) + '\n'); fs.writeFileSync(path.join(dir, 'map.json'), raw);
   if (manifest) {
     fs.writeFileSync(path.join(dir, 'manifest.sha256'), manifest);
-    const attestation = { payloadSourceCommit: commit, packageFilesSha256: sha(raw), manifestSha256: sha(manifest), manifestEntryCount: manifest.toString().trim().split('\n').length };
+    const attestation = { schemaVersion: 1, creationRegistrySha256: '', payloadSourceCommit: commit, packageFilesSha256: sha(raw), manifestSha256: sha(manifest), manifestEntryCount: manifest.toString().trim().split('\n').length };
     for (const key of ['defaultRuntimeAuthorization', 'pluginExecutionAuthorized', 'providerExecutionAuthorized', 'bridgeExecutionAuthorized', 'privateDataIncluded', 'databaseStateIncluded']) attestation[key] = false;
     fs.writeFileSync(path.join(dir, 'attestation.json'), JSON.stringify(attestation) + '\n');
   }
@@ -197,4 +197,147 @@ test('verifier still hashes admitted payloads and rejects wrong digest', () => {
   const manifest = Buffer.from(`${'0'.repeat(64)}  fixture/a.cjs\n`);
   const result = run(verifier, prepare(packageMap(['fixture/a.cjs']), manifest));
   assert.equal(result.status, 1); assert.deepEqual(result.reads, ['fixture/a.cjs']); assert.equal(result.output.counters.manifest_hash_mismatch_count, 1);
+});
+
+// PR14: use the same actual CLI and synthetic Git fixture to observe registry ordering.
+function changeProof(dir, mutate) {
+  const file = path.join(dir, 'attestation.json');
+  const proof = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const replacement = mutate(proof);
+  fs.writeFileSync(file, JSON.stringify(replacement === undefined ? proof : replacement) + '\n');
+}
+function registryCase() {
+  const dir = prepare(packageMap(['fixture/a.cjs']), manifestFrame(['fixture/a.cjs']));
+  const registry = path.join(dir, 'registry.json');
+  const bytes = Buffer.from('{"syntheticRegistry":true}\n');
+  fs.writeFileSync(registry, bytes);
+  changeProof(dir, proof => { proof.creationRegistrySha256 = sha(bytes); });
+  return { dir, registry };
+}
+function observed(tool, dir, registry, supplied = true) {
+  const readsFile = path.join(dir, 'registry-read-count.txt');
+  const hook = path.join(dir, 'registry-monitor.cjs');
+  fs.writeFileSync(readsFile, ''); fs.writeFileSync(trace, '');
+  // Observe and forward the exact synthetic path only; do not replace its bytes or errors.
+  fs.writeFileSync(hook, `const fs = require('node:fs');
+const read = fs.readFileSync;
+fs.readFileSync = function(file, ...args) {
+  if (file === ${JSON.stringify(registry)}) fs.appendFileSync(${JSON.stringify(readsFile)}, 'R');
+  return Reflect.apply(read, this, [file, ...args]);
+};\n`);
+  const args = ['--no-addons', '--require', monitor, '--require', hook, path.join(tools, tool), '--package-files', path.join(dir, 'map.json'), '--manifest', path.join(dir, 'manifest.sha256'), '--attestation', path.join(dir, 'attestation.json')];
+  if (supplied) args.push('--registry', registry);
+  const result = cp.spawnSync(process.execPath, args, { cwd: repo, env, timeout: 10000, maxBuffer: 1048576 });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null);
+  const calls = fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean).map(JSON.parse);
+  const reads = calls.filter(args => args[0] === 'show').map(args => args[1].slice(commit.length + 1));
+  const output = result.stdout.length ? JSON.parse(result.stdout.toString('utf8')) : null;
+  return { status: result.status, calls, reads, output, registryReads: fs.readFileSync(readsFile).length };
+}
+const independentProofChanges = [
+  ['payloadSourceCommit', '0'.repeat(40)], ['packageFilesSha256', '0'.repeat(64)],
+  ['manifestSha256', '0'.repeat(64)], ['manifestEntryCount', 2],
+  ...['defaultRuntimeAuthorization', 'pluginExecutionAuthorized', 'providerExecutionAuthorized', 'bridgeExecutionAuthorized', 'privateDataIncluded', 'databaseStateIncluded'].map(key => [key, true])
+];
+for (const [key, value] of independentProofChanges) {
+  test(`independent proof ${key} rejects before a supplied synthetic registry is read`, () => {
+    const { dir, registry } = registryCase(); changeProof(dir, proof => { proof[key] = value; });
+    const result = observed(verifier, dir, registry); rejectedWithoutBodies(result);
+    assert.equal(result.registryReads, 0); assert.ok(result.output.counters.attestation_mismatch_count > 0);
+  });
+}
+for (const [label, value] of [['missing', undefined], ['string', '1'], ['zero', 0], ['future', 2], ['null', null], ['boolean', true]]) {
+  test(`attestation schemaVersion ${label} rejects before registry and payload`, () => {
+    const { dir, registry } = registryCase(); changeProof(dir, proof => { proof.schemaVersion = value; });
+    const result = observed(verifier, dir, registry); rejectedWithoutBodies(result); assert.equal(result.registryReads, 0);
+    assert.ok(result.output.counters.attestation_mismatch_count > 0);
+  });
+}
+for (const [label, proof] of [['null', null], ['array', []], ['number', 1]]) {
+  test(`non-object attestation ${label} rejects before registry and payload`, () => {
+    const { dir, registry } = registryCase(); changeProof(dir, () => proof);
+    const result = observed(verifier, dir, registry); rejectedWithoutBodies(result); assert.equal(result.registryReads, 0);
+    assert.ok(result.output.counters.attestation_mismatch_count > 0);
+  });
+}
+test('bound registry cannot be omitted even when all other attestation fields match', () => {
+  const { dir, registry } = registryCase(); const result = observed(verifier, dir, registry, false);
+  rejectedWithoutBodies(result); assert.equal(result.registryReads, 0); assert.ok(result.output.counters.attestation_mismatch_count > 0);
+});
+for (const [label, value] of [['missing', undefined], ['empty', ''], ['malformed', 'not-a-digest']]) {
+  test(`supplied registry with ${label} binding rejects before reading it`, () => {
+    const { dir, registry } = registryCase(); changeProof(dir, proof => { proof.creationRegistrySha256 = value; });
+    const result = observed(verifier, dir, registry); rejectedWithoutBodies(result); assert.equal(result.registryReads, 0);
+  });
+}
+test('valid bound registry is read once and payload hashes still execute', () => {
+  const { dir, registry } = registryCase(); const result = observed(verifier, dir, registry);
+  assert.equal(result.status, 0); assert.equal(result.registryReads, 1); assert.deepEqual(result.reads, ['fixture/a.cjs']); assert.equal(result.output.ok, true);
+});
+test('valid registry shape with wrong digest reads only registry and rejects payload', () => {
+  const { dir, registry } = registryCase(); changeProof(dir, proof => { proof.creationRegistrySha256 = '0'.repeat(64); });
+  const result = observed(verifier, dir, registry); rejectedWithoutBodies(result); assert.equal(result.registryReads, 1); assert.equal(result.output.counters.attestation_mismatch_count, 1);
+});
+test('explicit empty registry binding preserves valid no-registry verification', () => {
+  const { dir, registry } = registryCase(); changeProof(dir, proof => { proof.creationRegistrySha256 = ''; });
+  const result = observed(verifier, dir, registry, false);
+  assert.equal(result.status, 0); assert.equal(result.registryReads, 0); assert.deepEqual(result.reads, ['fixture/a.cjs']);
+});
+const validReview = () => ({ path: 'fixture/a.cjs', reason: 'Synthetic source fixture', riskClassification: 'reviewed_source_name_only', evidenceReference: 'synthetic-fixture', runtimeEligible: false });
+const schemaChanges = [
+  ['packageId', pkg => { pkg.packageId = 'invalid id'; }],
+  ['payloadClass', pkg => { pkg.payloadClass = 'unknown'; }],
+  ['runtimeEligible', pkg => { pkg.runtimeEligible = 'false'; }],
+  ['reviewExceptions array', pkg => { pkg.reviewExceptions = {}; }],
+  ['review object', pkg => { pkg.reviewExceptions = [null]; }],
+  ['review required keys', pkg => { pkg.reviewExceptions = [{}]; }],
+  ['review risk', pkg => { pkg.reviewExceptions = [{ ...validReview(), riskClassification: 'unknown' }]; }],
+  ['review boolean', pkg => { pkg.reviewExceptions = [{ ...validReview(), runtimeEligible: 'false' }]; }],
+  ['review unsupported key', pkg => { pkg.reviewExceptions = [{ ...validReview(), extra: false }]; }],
+  ['package unsupported key', pkg => { pkg.extra = false; }]
+];
+for (const [label, mutate] of schemaChanges) {
+  for (const tool of [builder, verifier]) {
+    test(`${tool} applies shared package schema ${label} before all Git and payload reads`, () => {
+      const map = packageMap(['fixture/a.cjs']); mutate(map.packages[0]);
+      const dir = prepare(map, tool === verifier ? manifestFrame(['fixture/a.cjs']) : undefined);
+      const result = run(tool, dir); rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+      if (tool === builder) { assert.equal(fs.existsSync(path.join(dir, 'manifest.sha256')), false); assert.equal(fs.existsSync(path.join(dir, 'attestation.json')), false); }
+    });
+  }
+}
+for (const tool of [builder, verifier]) {
+  test(`${tool} rejects duplicate package identity with disjoint roots before Git`, () => {
+    const map = packageMap(['fixture/a.cjs']); map.packages.push({ ...map.packages[0], root: 'other', files: ['outside.txt'] });
+    const result = run(tool, prepare(map, manifestFrame(['fixture/a.cjs', 'outside.txt'])));
+    rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+  });
+}
+test('shared package schema accepts existing valid review exception contract', () => {
+  const map = packageMap(['fixture/a.cjs']); map.packages[0].reviewExceptions = [validReview()];
+  const dir = prepare(map); assert.equal(run(builder, dir).status, 0); assert.equal(run(verifier, dir).status, 0);
+});
+for (const placement of ['leading', 'internal', 'trailing']) {
+  test(`canonical manifest rejects ${placement} blank record before registry and payload`, () => {
+    const files = ['fixture/a.cjs', 'fixture/中文.cjs']; const original = manifestFrame(files).toString();
+    const text = placement === 'leading' ? '\n' + original : placement === 'trailing' ? original + '\n' : original.replace('\n', '\n\n');
+    const dir = prepare(packageMap(files), Buffer.from(text)); changeProof(dir, proof => { proof.manifestEntryCount = files.length; });
+    const registry = path.join(dir, 'registry.json'); fs.writeFileSync(registry, '{}\n');
+    const result = observed(verifier, dir, registry, false); rejectedWithoutBodies(result); assert.equal(result.registryReads, 0); assert.deepEqual(result.calls, []);
+  });
+}
+test('empty package set retains the builder single-LF output and zero-entry verification', () => {
+  const map = packageMap([]); map.packages = [];
+  const dir = prepare(map); assert.equal(run(builder, dir).status, 0);
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'manifest.sha256')), Buffer.from('\n'));
+  const result = run(verifier, dir); assert.equal(result.status, 0); assert.equal(result.output.manifestEntryCount, 0); assert.deepEqual(result.reads, []);
+});
+test('empty package set rejects multiple LF rather than admitting empty records', () => {
+  const map = packageMap([]); map.packages = [];
+  const dir = prepare(map, Buffer.from('\n\n')); changeProof(dir, proof => { proof.manifestEntryCount = 0; });
+  const result = run(verifier, dir); rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+});
+test('nonempty package set cannot use the single-LF zero-entry output', () => {
+  const dir = prepare(packageMap(['fixture/a.cjs']), Buffer.from('\n')); changeProof(dir, proof => { proof.manifestEntryCount = 0; });
+  const result = run(verifier, dir); rejectedWithoutBodies(result); assert.equal(result.output.counters.allowlisted_missing_from_manifest_count, 1);
 });
