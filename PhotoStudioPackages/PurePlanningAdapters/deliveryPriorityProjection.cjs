@@ -81,7 +81,11 @@ function isExplicitIso(value) {
 }
 
 function isDateOnly(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= monthDays[month - 1];
 }
 
 function validateOptionalGeneratedAt(value) {
@@ -117,7 +121,13 @@ function validateScope(value) {
 }
 
 function retryDate(snapshot) {
-  return cleanString(snapshot.retry_after_date);
+  const value = snapshot.retry_after_date;
+  if (value === undefined || value === null) return null;
+  const date = cleanString(value);
+  if (typeof value !== 'string' || (date && !isDateOnly(date))) {
+    throw new TypeError('retry_after_date must be a valid YYYY-MM-DD date when supplied.');
+  }
+  return date;
 }
 
 function scheduleDate(snapshot) {
@@ -128,14 +138,14 @@ function updatedAt(snapshot) {
   return cleanString(snapshot.updated_at);
 }
 
-function projectIdFor(snapshot) {
+function projectIdFor(snapshot, scopedProjectId = null) {
   const direct = cleanString(snapshot.project_id);
   if (direct) return direct;
   if (!Array.isArray(snapshot.export_rows)) return null;
   for (const row of snapshot.export_rows) {
     if (isPlainObject(row)) {
       const value = cleanString(row.project_id);
-      if (value) return value;
+      if (value && (scopedProjectId === null || value === scopedProjectId)) return value;
     }
   }
   return null;
@@ -157,7 +167,7 @@ function rankFor(snapshot, referenceDate) {
 
 function scopeMatches(snapshot, scope) {
   if (!scope) return true;
-  if (scope.projectId !== undefined && projectIdFor(snapshot) !== scope.projectId) return false;
+  if (scope.projectId !== undefined && projectIdFor(snapshot, scope.projectId) !== scope.projectId) return false;
   if (scope.exportKey !== undefined && cleanString(snapshot.export_key) !== scope.exportKey) return false;
   if (scope.targetType !== undefined && cleanString(snapshot.target_type) !== scope.targetType) return false;
   if (scope.deliveryState !== undefined && cleanString(snapshot.delivery_state) !== scope.deliveryState) return false;
@@ -187,14 +197,14 @@ function sortActionable(left, right) {
   return left.sourceIndex - right.sourceIndex;
 }
 
-function buildPriorityItem(snapshot, sourceIndex, referenceDate) {
+function buildPriorityItem(snapshot, sourceIndex, referenceDate, scope) {
   const rank = rankFor(snapshot, referenceDate);
   if (!Object.prototype.hasOwnProperty.call(ADVISORY_BY_RANK, rank)) return null;
   const advisory = ADVISORY_BY_RANK[rank];
   const item = {
     sourceIndex,
     rank,
-    projectId: projectIdFor(snapshot),
+    projectId: projectIdFor(snapshot, scope && scope.projectId !== undefined ? scope.projectId : null),
     exportKey: cleanString(snapshot.export_key),
     targetType: cleanString(snapshot.target_type),
     deliveryState: cleanString(snapshot.delivery_state),
@@ -259,7 +269,7 @@ function buildDeliveryPriorityFromSnapshot(input) {
   }
 
   const actionable = matched
-    .map(({ snapshot, index }) => buildPriorityItem(snapshot, index, referenceDate))
+    .map(({ snapshot, index }) => buildPriorityItem(snapshot, index, referenceDate, scope))
     .filter(Boolean)
     .sort(sortActionable);
   const limit = maxItems === null ? actionable.length : Math.min(maxItems, actionable.length);

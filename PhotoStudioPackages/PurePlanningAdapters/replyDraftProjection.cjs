@@ -252,6 +252,11 @@ function buildClientReplyDraftFromSnapshot(input) {
   const status = validateMapKey(requiredString(projectSnapshot.status, 'projectSnapshot.status'), STATUS_LABELS, 'projectSnapshot.status');
   const projectId = requiredString(projectSnapshot.project_id, 'projectSnapshot.project_id');
   const projectName = requiredString(projectSnapshot.project_name, 'projectSnapshot.project_name');
+  const projectCustomerId = optionalString(projectSnapshot.customer_id);
+  const customerId = optionalString(customerSnapshot.customer_id);
+  if (projectCustomerId && customerId && projectCustomerId !== customerId) {
+    throw new TypeError('customerSnapshot.customer_id must match projectSnapshot.customer_id.');
+  }
   const fallbackFields = [];
   const warnings = [];
   let customerName = optionalString(customerSnapshot.customer_name);
