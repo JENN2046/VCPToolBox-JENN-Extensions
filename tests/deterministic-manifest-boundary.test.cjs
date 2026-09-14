@@ -673,3 +673,63 @@ for (const tool of [builder, verifier]) {
   });
 }
 
+
+// Final bounded S7 groups: every body is synthetic; no real credential/cache is used.
+const s7CredentialSuffixes = ['key', 'pem', 'p12', 'pfx', 'crt', 'cer', 'der', 'keystore', 'jks', 'kdbx', 'pgpass'];
+const s7CredentialPaths = [
+  ...s7CredentialSuffixes.map(suffix => 'fixture/s7.' + suffix),
+  ...['id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'synthetic_rsa'].map(name => 'fixture/' + name)
+];
+const s7CachePaths = ['.cache', '.tmp', 'tmp'].flatMap(name => [
+  name + '/synthetic.cjs', 'fixture/' + name + '/synthetic.cjs'
+]);
+const s7OrdinaryControls = ['fixture/id_rsa.pub', 'fixture/certificate.crt.cjs', 'fixture/tmp.cjs'];
+const s7Bytes = Buffer.from('SYNTHETIC FILENAME-CATEGORY TEST ONLY; NOT A KEY, CERTIFICATE OR RUNTIME STATE\n');
+const s7Objects = [...s7CredentialPaths, ...s7CachePaths, ...s7OrdinaryControls].map(name => ({
+  name, mode: '100644', oid: git(['hash-object', '-w', '--stdin'], s7Bytes)
+}));
+const s7Commit = git(['commit-tree', tree([...objects, ...s7Objects])],
+  Buffer.from('Synthetic S7 credential and cache categories only\n'));
+function prepareS7(files) {
+  const map = packageMap(files); map.payloadSourceCommit = s7Commit;
+  const frame = Buffer.from(files.slice().sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+    .map(name => sha(data.has(name) ? data.get(name) : s7Bytes) + '  ' + name + '\n').join(''));
+  const dir = prepare(map, frame); changeProof(dir, proof => { proof.payloadSourceCommit = s7Commit; }); return dir;
+}
+for (const tool of [builder, verifier]) {
+  for (const name of s7CredentialPaths) {
+    test(`${tool} rejects exact S7 credential category ${name} before all payload reads`, () => {
+      rejectedWithoutBodies(run(tool, prepareS7(['fixture/a.cjs', name])));
+    });
+  }
+  for (const name of s7CachePaths) {
+    test(`${tool} rejects exact S7 temporary directory ${name} before all payload reads`, () => {
+      rejectedWithoutBodies(run(tool, prepareS7(['fixture/a.cjs', name])));
+    });
+  }
+  for (const name of s7OrdinaryControls) {
+    test(`${tool} keeps nonmatching S7 ordinary filename ${name} usable`, () => {
+      const result = run(tool, prepareS7([name]));
+      assert.equal(result.status, 0); assert.deepEqual(result.reads, [name]);
+    });
+  }
+  for (const roots of [
+    ['Plugin/Foo', 'plugin/foo'],
+    ['Plugin/Foo/', 'plugin/FOO/child'],
+    ['PLUGIN/FOO/child/', 'plugin/foo///']
+  ]) {
+    test(`${tool} rejects Windows-folded root identity ${roots.join(' vs ')} before Git`, () => {
+      const { map, files } = rootMap(roots);
+      const result = run(tool, prepare(map, manifestFrame(files)));
+      rejectedWithoutBodies(result); assert.deepEqual(result.calls, []);
+    });
+  }
+  for (const roots of [['Plugin/Foo', 'plugin/foobar'], ['Plugin/Foo', 'plugin/bar']]) {
+    test(`${tool} preserves distinct root segment identities ${roots.join(' vs ')}`, () => {
+      const { map, files } = rootMap(roots);
+      const result = run(tool, prepare(map, manifestFrame(files)));
+      assert.equal(result.status, 0); assert.deepEqual(result.reads, files);
+    });
+  }
+}
+

@@ -56,7 +56,7 @@ function isRelativeExactPath(filePath) {
 function hardDenied(filePath) {
   const segments = filePath.split('/').map((segment) => segment.toLowerCase());
   const deniedSegments = [
-    '.git', '.agent_board', 'localstate', 'node_modules', 'cache', 'state',
+    '.git', '.agent_board', 'localstate', 'node_modules', '.cache', '.tmp', 'tmp', 'cache', 'state',
     'logs', 'log', 'output', 'outputs', 'receipts', 'secrets', 'private', 'debuglog',
     'image', 'vectorstore', 'vcptimedcontacts', 'vcptimedresults'
   ];
@@ -64,7 +64,8 @@ function hardDenied(filePath) {
   if (/(^|\/)\.env($|\.)/i.test(filePath)) return true;
   if (/(^|\/)config\.env(\.local)?$/i.test(filePath)) return true;
   if (/(^|\/)[^/]*\.env(?:\.[^/]*)?$/i.test(filePath) && !/\.(example|template)$/i.test(filePath)) return true;
-  if (/\.(sqlite|sqlite3|db|db3|duckdb|faiss|parquet|log|pem|key|p12|pfx|jks|kdbx)$/i.test(filePath)) return true;
+  if (/\.(sqlite|sqlite3|db|db3|duckdb|faiss|parquet|log|pem|key|p12|pfx|jks|kdbx|crt|cer|der|keystore|pgpass)$/i.test(filePath)) return true;
+  if (/(^|\/)[^/]*_(rsa|dsa|ecdsa|ed25519)$/i.test(filePath)) return true;
   if (/\.(sqlite|db)-(shm|wal)$/i.test(filePath)) return true;
   return [
     'modelredirect.json',
@@ -156,8 +157,8 @@ function validatePackageSchema(packageFiles, failures) {
 
   for (let i = 0; i < roots.length; i += 1) {
     for (let j = i + 1; j < roots.length; j += 1) {
-      const a = roots[i].root;
-      const b = roots[j].root;
+      const a = roots[i].root.toLowerCase();
+      const b = roots[j].root.toLowerCase();
       if (a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)) {
         failures.push(`Ambiguous package roots: ${roots[i].packageId}=${a}, ${roots[j].packageId}=${b}`);
       }
