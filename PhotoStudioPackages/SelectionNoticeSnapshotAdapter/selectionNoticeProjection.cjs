@@ -84,8 +84,20 @@ function terminateSentence(value) {
   return TERMINAL_PUNCTUATION.test(value) ? value : `${value}.`;
 }
 
+function hasValidCalendarDate(value) {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  // Keep the existing four-digit year range, including ISO year 0000.
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= monthDays[month - 1];
+}
+
 function validateGeneratedAt(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+    || !hasValidCalendarDate(value) || Number(value.slice(11, 13)) > 23
+    || Number(value.slice(14, 16)) > 59 || Number(value.slice(17, 19)) > 59) {
     throw new TypeError('generatedAt must be an explicit UTC ISO timestamp.');
   }
   return value;
@@ -93,7 +105,7 @@ function validateGeneratedAt(value) {
 
 function validateDate(value, label) {
   if (value == null) return null;
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !hasValidCalendarDate(value)) {
     throw new TypeError(`${label} must use YYYY-MM-DD.`);
   }
   return value;
