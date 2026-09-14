@@ -58,7 +58,8 @@ function realInside(root, child) {
   const resolvedRoot = fs.realpathSync(path.resolve(root));
   if (!fs.statSync(resolvedRoot).isDirectory()) return null;
   const resolvedChild = fs.realpathSync(path.resolve(child));
-  return resolvedChild === resolvedRoot || resolvedChild.startsWith(`${resolvedRoot}${path.sep}`)
+  const rootPrefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+  return resolvedChild === resolvedRoot || resolvedChild.startsWith(rootPrefix)
     ? resolvedChild : null;
 }
 
