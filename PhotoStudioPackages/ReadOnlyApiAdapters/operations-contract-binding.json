@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "packageId": "jenn.photostudio.readonly-api-adapters",
+  "bindingStatus": "CANONICAL_OPERATIONS_READ_CONTRACT_BOUND",
+  "backendRepositoryRole": "Photo_Studio_OS_Backend",
+  "backendCommit": "19a6060482ace0a86e72adaecb4a04b1ea2daee5",
+  "backendParentCommit": "9327d009a8f1fac0b6e7560f03998bdfe3830bf4",
+  "contractEvidence": {
+    "openapiContract": {
+      "path": "docs/contracts/frontend-v2-read-model.openapi.yaml",
+      "gitBlob": "cc05d67d86a519197cd7a27de1c49659a33ea15e",
+      "sha256": "5306e21e006c606fe76ee6f6eb5c79ad19fef554fdb5a68555bc424703a4df25",
+      "byteCount": 43141
+    },
+    "gapMap": {
+      "path": "docs/contracts/frontend-v2-read-model-gap-map.md",
+      "gitBlob": "57a7acee18ce0865a7a34fd59a276f71f38c6f69",
+      "sha256": "dbc81dd0f5af84f252fce2651e1394f095a9db92e6cf2f91b123f5aaeea8b9ea",
+      "byteCount": 18376
+    },
+    "controller": {
+      "path": "src/read-models/read-models.controller.ts",
+      "gitBlob": "08eb76fc6f497a8b9f1575dceb2837bbab760fa3",
+      "sha256": "d8c89cc494e4c27c9d0bf67f92b3edcd78b927a9f231e00bc8afd07668bd9da4",
+      "byteCount": 2885
+    },
+    "driftChecker": {
+      "path": "scripts/check-frontend-v2-read-models.js",
+      "gitBlob": "552d88fe051b9b24cfe630659d5e513af0a835c8",
+      "sha256": "0eaadb1e0047afb92ab1499dc485fd29a9d89205bb2463ced3e2738b3eed68bc",
+      "byteCount": 16045
+    },
+    "targetedContractTest": {
+      "path": "tests/read-model-v2-operations.contract.test.js",
+      "gitBlob": "698cbf4f83ea2a8e522c979294291ddc59263a0a",
+      "sha256": "1f2abb929d1f8c4fc80b04c922df54bbb60f6f073db9bbd98a5b8e6a0fe79b0e",
+      "byteCount": 14810
+    }
+  },
+  "operations": [
+    {
+      "operationId": "getOperationsDeliveriesReadModel",
+      "method": "GET",
+      "path": "/api/v2/read/operations/deliveries",
+      "requiredPermission": "deliveries:read",
+      "creationId": "jenn.photo-studio.plugin-delivery-operator-report",
+      "action": "build_delivery_operator_report_from_operations_snapshot",
+      "coverage": "partial"
+    },
+    {
+      "operationId": "getOperationsWeeklyProjectsReadModel",
+      "method": "GET",
+      "path": "/api/v2/read/operations/projects/weekly",
+      "requiredPermission": "projects:read",
+      "creationId": "jenn.photo-studio.plugin-weekly-project-digest",
+      "action": "build_weekly_project_digest_from_operations_snapshot",
+      "coverage": "partial"
+    },
+    {
+      "operationId": "getOperationsProjectFieldQualityReadModel",
+      "method": "GET",
+      "path": "/api/v2/read/operations/projects/field-quality",
+      "requiredPermission": "projects:read",
+      "creationId": "jenn.photo-studio.plugin-field-audit",
+      "action": "build_project_field_audit_from_operations_snapshot",
+      "coverage": "partial"
+    }
+  ],
+  "runtimeBoundary": {
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "networkAuthorized": false,
+    "realBackendAuthorized": false,
+    "realAuthAuthorized": false,
+    "businessWritesAuthorized": false,
+    "databaseAccessAuthorized": false,
+    "privateDataAuthorized": false,
+    "storageAccessAuthorized": false,
+    "syntheticShadowOnly": true,
+    "fullParityClaimed": false
+  }
+}
