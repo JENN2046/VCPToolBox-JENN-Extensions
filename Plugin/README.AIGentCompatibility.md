@@ -49,10 +49,10 @@ optional actions.
 Run the exact regressions with Node.js 22:
 
 ```sh
-node --test tests/aigent-quality-compat.test.cjs tests/aigent-style-compat.test.cjs tests/aigent-workflow-compat.test.cjs tests/aigent-wrapper-boundary.test.cjs tests/aigent-result-consistency.test.cjs tests/aigent-input-path-boundary.test.cjs
+node --test tests/aigent-quality-compat.test.cjs tests/aigent-style-compat.test.cjs tests/aigent-workflow-compat.test.cjs tests/aigent-wrapper-boundary.test.cjs tests/aigent-result-consistency.test.cjs tests/aigent-input-path-boundary.test.cjs tests/aigent-root-grant-boundary.test.cjs
 ```
 
-The command runs 116 tests. The original 28 tests remain unchanged. The additional 37 cases cover actual
+The command runs 144 tests. The original 28 tests remain unchanged. The additional 37 cases cover actual
 stdin entrypoints, byte/chunk/EOF boundaries, explicit path grants, canonical path handoff, symlink
 escapes and granted synthetic positive paths. They create temporary fixtures
 and Node child processes. Eight further regressions cover concurrent logging,
@@ -62,5 +62,8 @@ reaches the mocked execution layer; its assertions and test count are unchanged.
 Sixteen result-consistency tests cover retry verdicts and execution failures.
 Twenty-seven further cases cover required prompts, string aliases, actual
 canonical-path handoff, original-alias replacement and core path normalization.
+Twenty-eight further cases cover filesystem-root grants: 12 real POSIX fixture
+cases and 16 synthetic drive/UNC cases using the actual function with injected
+win32 dependencies. The latter do not establish native Windows acceptance.
 They do not validate real assets, registration,
 provider integration, production deployment or the entire repository suite.
