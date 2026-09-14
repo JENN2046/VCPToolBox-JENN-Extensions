@@ -80,5 +80,23 @@
   },
   "webSocketPush": {
     "enabled": false
+  },
+  "externalRuntimeCompatibility": {
+    "adapterProfile": "LEGACY_FLAT_ACTION_V1",
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "executionAuthorized": false,
+    "runtimeEligible": false,
+    "isolatedProcessRequired": true,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "secretValueIncluded": false,
+    "credentialValueIncluded": false,
+    "hostEnvInheritanceAllowed": false,
+    "classification": "PRESERVED_PENDING_NETWORK_WRITE_GATE",
+    "networkRequired": true,
+    "externalWritesPossible": true,
+    "dependsOn": "DingTalkCLI",
+    "futureGate": "DINGTALK_NETWORK_WRITE"
   }
 }

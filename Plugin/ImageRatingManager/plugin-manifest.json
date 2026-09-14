@@ -61,5 +61,22 @@
         "description": "获取相似标签的高分图片（用于推荐参考）"
       }
     ]
+  },
+  "externalRuntimeCompatibility": {
+    "adapterProfile": "LEGACY_FLAT_ACTION_V1",
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "executionAuthorized": false,
+    "runtimeEligible": false,
+    "isolatedProcessRequired": true,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "secretValueIncluded": false,
+    "credentialValueIncluded": false,
+    "hostEnvInheritanceAllowed": false,
+    "classification": "PRESERVED_PENDING_LOCALSTATE_DATABASE_GATE",
+    "localStateDatabaseRequired": true,
+    "filesystemWritesPossible": true,
+    "futureGate": "IMAGE_RATING_LOCALSTATE_DATABASE"
   }
 }
