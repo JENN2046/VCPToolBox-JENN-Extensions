@@ -1,0 +1,80 @@
+name: PR12 ancestry reconciliation
+
+on:
+  push:
+    branches:
+      - codex/three-way-pure-planning-source-20260914
+    paths:
+      - .github/workflows/pr12_ancestry_reconcile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin current main and merge with one allowed conflict
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=9a37b107c1de9caaa51884b6df7f284e4e03496d
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$expected"
+          cp manifests/MANIFEST.sha256 /tmp/pr12-manifest.sha256
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            printf 'conflicts:\n%s\n' "${conflicts[*]}"
+            test "${#conflicts[@]}" -eq 1
+            test "${conflicts[0]}" = 'manifests/MANIFEST.sha256'
+            cp /tmp/pr12-manifest.sha256 manifests/MANIFEST.sha256
+            git add manifests/MANIFEST.sha256
+          fi
+          test -z "$(git diff --name-only --diff-filter=U)"
+
+      - name: Verify reconciled manifest contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=9a37b107c1de9caaa51884b6df7f284e4e03496d
+          git show "$expected:manifests/MANIFEST.sha256" > /tmp/main-manifest.sha256
+          main_lines=$(wc -l < /tmp/main-manifest.sha256)
+          head -n "$main_lines" manifests/MANIFEST.sha256 > /tmp/replayed-main.sha256
+          cmp /tmp/main-manifest.sha256 /tmp/replayed-main.sha256
+          test "$(grep -c 'PhotoStudioPackages/PurePlanningAdapters/' manifests/MANIFEST.sha256)" -eq 7
+          grep 'PhotoStudioPackages/PurePlanningAdapters/' manifests/MANIFEST.sha256 | while read -r hash path; do
+            actual=$(sha256sum "$path" | awk '{print $1}')
+            test "$hash" = "$actual"
+          done
+
+      - name: Validate merged candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check PhotoStudioPackages/PurePlanningAdapters/caseContentDraftProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/deliveryPriorityProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/replyDraftProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/stdio-entrypoint.cjs
+          node --check tests/photostudio-pure-snapshot-updated-at-final.test.cjs
+          node --test tests/photostudio-pure-snapshot-*.test.cjs
+
+      - name: Commit bounded ancestry reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .git/MERGE_HEAD
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Merge current main into PR12 after bounded manifest reconciliation'
+          test "$(git rev-parse HEAD^2)" = '9a37b107c1de9caaa51884b6df7f284e4e03496d'
+          git push origin HEAD:${GITHUB_REF_NAME}
