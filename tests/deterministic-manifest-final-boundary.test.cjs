@@ -197,3 +197,51 @@ test('verifier rejects an annotated tag object even when proof hashes are reboun
   assert.equal(result.ok, false);
   assert.ok(result.failures.includes('payloadSourceCommit must identify a commit object directly'));
 });
+
+function validReviewException() {
+  return {
+    path: replacementPath,
+    reason: 'Synthetic schema fixture',
+    riskClassification: 'reviewed_source_name_only',
+    evidenceReference: 'synthetic-evidence',
+    runtimeEligible: false
+  };
+}
+
+const currentMainSchemaCases = [
+  ['top-level additionalProperties=false', map => { map.unexpected = false; }, 'unsupported property unexpected'],
+  ['creationIds items are strings', map => { map.packages[0].creationIds = [7]; }, 'creationIds items must be strings'],
+  ['files items are strings', map => { map.packages[0].files = [7]; }, 'files items must be strings'],
+  ['reviewException path is string', map => { const review = validReviewException(); review.path = 7; map.packages[0].reviewExceptions = [review]; }, '.path must be a string'],
+  ['reviewException reason is string', map => { const review = validReviewException(); review.reason = 7; map.packages[0].reviewExceptions = [review]; }, '.reason must be a string'],
+  ['reviewException evidenceReference is string', map => { const review = validReviewException(); review.evidenceReference = 7; map.packages[0].reviewExceptions = [review]; }, '.evidenceReference must be a string'],
+  ['notes is string', map => { map.packages[0].notes = 7; }, '.notes must be a string']
+];
+
+for (const [label, mutate, expected] of currentMainSchemaCases) {
+  test(`builder enforces current-main package schema: ${label}`, () => {
+    const dir = caseDir();
+    const map = packageMap(commit);
+    mutate(map);
+    writeMap(dir, map);
+    const built = run(builder, dir);
+    assert.equal(built.status, 1);
+    assert.match(built.stderr, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.equal(fs.existsSync(path.join(dir, 'manifest.sha256')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'attestation.json')), false);
+  });
+
+  test(`verifier enforces current-main package schema: ${label}`, () => {
+    const dir = caseDir();
+    writeMap(dir, packageMap(commit));
+    assert.equal(run(builder, dir).status, 0);
+    const map = packageMap(commit);
+    mutate(map);
+    writeMap(dir, map);
+    const verified = run(verifier, dir);
+    assert.equal(verified.status, 1);
+    const result = JSON.parse(verified.stdout);
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some(failure => failure.includes(expected)));
+  });
+}
