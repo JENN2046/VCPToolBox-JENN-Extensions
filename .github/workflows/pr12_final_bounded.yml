@@ -1,0 +1,89 @@
+name: PR12 final bounded repair
+
+on:
+  push:
+    branches:
+      - codex/three-way-pure-planning-source-20260914
+    paths:
+      - .github/workflows/pr12_final_bounded.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR branch commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin current main authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          expected=9a37b107c1de9caaa51884b6df7f284e4e03496d
+          actual=$(git rev-parse origin/main)
+          test "$actual" = "$expected"
+
+      - name: Reconcile PurePlanning checksum rows onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=9a37b107c1de9caaa51884b6df7f284e4e03496d
+          git show "$expected:manifests/MANIFEST.sha256" > /tmp/main-manifest.sha256
+          if grep -q 'PhotoStudioPackages/PurePlanningAdapters/' /tmp/main-manifest.sha256; then
+            echo 'current main unexpectedly already contains PurePlanning rows' >&2
+            exit 1
+          fi
+          cp /tmp/main-manifest.sha256 manifests/MANIFEST.sha256
+          paths=(
+            PhotoStudioPackages/PurePlanningAdapters/adapter-profile-manifest.json
+            PhotoStudioPackages/PurePlanningAdapters/caseContentDraftProjection.cjs
+            PhotoStudioPackages/PurePlanningAdapters/deliveryPriorityProjection.cjs
+            PhotoStudioPackages/PurePlanningAdapters/index.cjs
+            PhotoStudioPackages/PurePlanningAdapters/package-manifest.json
+            PhotoStudioPackages/PurePlanningAdapters/replyDraftProjection.cjs
+            PhotoStudioPackages/PurePlanningAdapters/stdio-entrypoint.cjs
+          )
+          for p in "${paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum "$p" | awk '{print $1}')" "$p" >> manifests/MANIFEST.sha256
+          done
+          main_lines=$(wc -l < /tmp/main-manifest.sha256)
+          head -n "$main_lines" manifests/MANIFEST.sha256 > /tmp/replayed-main.sha256
+          cmp /tmp/main-manifest.sha256 /tmp/replayed-main.sha256
+          test "$(grep -c 'PhotoStudioPackages/PurePlanningAdapters/' manifests/MANIFEST.sha256)" -eq 7
+          grep 'PhotoStudioPackages/PurePlanningAdapters/' manifests/MANIFEST.sha256 | while read -r hash path; do
+            actual=$(sha256sum "$path" | awk '{print $1}')
+            test "$hash" = "$actual"
+          done
+
+      - name: Syntax check changed PurePlanning source and focused test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check PhotoStudioPackages/PurePlanningAdapters/caseContentDraftProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/deliveryPriorityProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/replyDraftProjection.cjs
+          node --check PhotoStudioPackages/PurePlanningAdapters/stdio-entrypoint.cjs
+          node --check tests/photostudio-pure-snapshot-updated-at-final.test.cjs
+
+      - name: Run complete PurePlanning regression family
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/photostudio-pure-snapshot-*.test.cjs
+
+      - name: Commit reconciled manifest only after validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add manifests/MANIFEST.sha256
+          git diff --cached --exit-code && exit 0 || true
+          git commit -m 'chore(manifest): reconcile PurePlanning rows onto current main'
+          git push origin HEAD:${GITHUB_REF_NAME}
