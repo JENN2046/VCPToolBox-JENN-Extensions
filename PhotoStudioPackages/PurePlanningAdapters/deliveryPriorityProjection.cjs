@@ -143,8 +143,59 @@ function scheduleDate(snapshot) {
   return date || retryDate(snapshot);
 }
 
+function daysFromCivil(year, month, day) {
+  let adjustedYear = year;
+  if (month <= 2) adjustedYear -= 1;
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const shiftedMonth = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * shiftedMonth + 2) / 5) + day - 1;
+  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  return era * 146097 + dayOfEra - 719468;
+}
+
+function parseUpdatedAtSortKey(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?([Zz]|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (!isDateOnly(`${match[1]}-${match[2]}-${match[3]}`) || hour > 23 || minute > 59 || second > 59) return null;
+
+  const zone = match[8];
+  let offsetMinutes = 0;
+  if (zone.toUpperCase() !== 'Z') {
+    const offsetHour = Number(zone.slice(1, 3));
+    const offsetMinute = Number(zone.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) return null;
+    if (zone === '-00:00') return null;
+    const direction = zone[0] === '+' ? 1 : -1;
+    offsetMinutes = direction * (offsetHour * 60 + offsetMinute);
+  }
+
+  const fraction = match[7] ? Number(match[7].padEnd(6, '0')) : 0;
+  const localSeconds = BigInt(daysFromCivil(year, month, day)) * 86400n
+    + BigInt(hour * 3600 + minute * 60 + second);
+  const utcSeconds = localSeconds - BigInt(offsetMinutes * 60);
+  return utcSeconds * 1000000n + BigInt(fraction);
+}
+
 function updatedAt(snapshot) {
-  return cleanString(snapshot.updated_at);
+  const value = snapshot.updated_at;
+  if (value === undefined || value === null) return { value: null, sortKey: null };
+  if (typeof value !== 'string') {
+    throw new TypeError('updated_at must be a valid explicit-offset date-time when supplied.');
+  }
+  const normalized = value.trim();
+  if (!normalized) return { value: null, sortKey: null };
+  const sortKey = parseUpdatedAtSortKey(normalized);
+  if (sortKey === null) {
+    throw new TypeError('updated_at must be a valid explicit-offset date-time when supplied.');
+  }
+  return { value: normalized, sortKey };
 }
 
 function projectIdFor(snapshot, scopedProjectId = null) {
@@ -190,10 +241,14 @@ function compareNullableDateAscending(left, right) {
   return 0;
 }
 
-function compareNullableDateDescending(left, right) {
-  if (left && right) return right.localeCompare(left);
-  if (left) return -1;
-  if (right) return 1;
+function compareNullableInstantDescending(left, right) {
+  if (left !== null && right !== null) {
+    if (left > right) return -1;
+    if (left < right) return 1;
+    return 0;
+  }
+  if (left !== null) return -1;
+  if (right !== null) return 1;
   return 0;
 }
 
@@ -201,7 +256,7 @@ function sortActionable(left, right) {
   if (left.rank !== right.rank) return left.rank - right.rank;
   const schedule = compareNullableDateAscending(left.scheduleDateForSort, right.scheduleDateForSort);
   if (schedule !== 0) return schedule;
-  const updated = compareNullableDateDescending(left.updatedAtForSort, right.updatedAtForSort);
+  const updated = compareNullableInstantDescending(left.updatedAtForSort, right.updatedAtForSort);
   if (updated !== 0) return updated;
   return left.sourceIndex - right.sourceIndex;
 }
@@ -210,6 +265,7 @@ function buildPriorityItem(snapshot, sourceIndex, referenceDate, scope) {
   const rank = rankFor(snapshot, referenceDate);
   if (!Object.prototype.hasOwnProperty.call(ADVISORY_BY_RANK, rank)) return null;
   const advisory = ADVISORY_BY_RANK[rank];
+  const update = updatedAt(snapshot);
   const item = {
     sourceIndex,
     rank,
@@ -219,7 +275,7 @@ function buildPriorityItem(snapshot, sourceIndex, referenceDate, scope) {
     deliveryState: cleanString(snapshot.delivery_state),
     retryAfterDate: retryDate(snapshot),
     scheduleDate: scheduleDate(snapshot),
-    updatedAt: updatedAt(snapshot),
+    updatedAt: update.value,
     recommendationType: 'ADVISORY_ONLY',
     executionAuthorized: false,
     stateMutationAuthorized: false,
@@ -230,7 +286,7 @@ function buildPriorityItem(snapshot, sourceIndex, referenceDate, scope) {
     rank,
     sourceIndex,
     scheduleDateForSort: item.scheduleDate,
-    updatedAtForSort: item.updatedAt
+    updatedAtForSort: update.sortKey
   };
 }
 
