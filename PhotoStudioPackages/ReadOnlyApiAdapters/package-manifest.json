@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "packageId": "jenn.photostudio.readonly-api-adapters",
+  "version": "0.2.0",
+  "displayName": "Photo Studio Read-Only API Adapter Profiles",
+  "payloadClass": "photo-studio-readonly-api-adapter",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "entrypoint": "stdio-entrypoint.cjs",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node stdio-entrypoint.cjs"
+  },
+  "protocol": "CANONICAL_JSONL_V1",
+  "communication": {
+    "protocol": "stdio"
+  },
+  "allowedActions": [
+    "build_delivery_operator_report_from_snapshots",
+    "build_delivery_operator_report_from_operations_snapshot",
+    "build_weekly_project_digest_from_operations_snapshot",
+    "build_project_field_audit_from_operations_snapshot"
+  ],
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "build_delivery_operator_report_from_snapshots",
+        "preserved": true,
+        "deprecatedSyntheticCompatibility": true
+      },
+      {
+        "commandIdentifier": "build_delivery_operator_report_from_operations_snapshot",
+        "syntheticShadowOnly": true
+      },
+      {
+        "commandIdentifier": "build_weekly_project_digest_from_operations_snapshot",
+        "syntheticShadowOnly": true
+      },
+      {
+        "commandIdentifier": "build_project_field_audit_from_operations_snapshot",
+        "syntheticShadowOnly": true
+      }
+    ]
+  },
+  "sourcePreserved": true,
+  "networkAuthorized": false,
+  "realBackendAuthorized": false,
+  "realAuthAuthorized": false,
+  "businessWritesAuthorized": false,
+  "filesystemReadsAuthorized": false,
+  "filesystemWritesAuthorized": false,
+  "providerCallsAuthorized": false,
+  "bridgeCallsAuthorized": false,
+  "privateDataAuthorized": false,
+  "databaseAccessAuthorized": false,
+  "storageAccessAuthorized": false,
+  "persistentEnablementAuthorized": false,
+  "syntheticShadowOnly": true,
+  "fullParityClaimed": false,
+  "userAcceptanceStatus": "PENDING",
+  "creationIds": [
+    "jenn.photo-studio.plugin-delivery-operator-report",
+    "jenn.photo-studio.plugin-weekly-project-digest",
+    "jenn.photo-studio.plugin-field-audit"
+  ]
+}

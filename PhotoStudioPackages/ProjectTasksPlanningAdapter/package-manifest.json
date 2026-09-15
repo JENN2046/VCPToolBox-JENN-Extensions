@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 1,
+  "packageId": "jenn.photostudio.project-tasks-planning-adapter",
+  "version": "0.1.0",
+  "displayName": "Photo Studio Project Tasks Planning Adapter",
+  "payloadClass": "photo-studio-project-tasks-planning-adapter",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "entrypoint": "stdio-entrypoint.cjs",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node stdio-entrypoint.cjs"
+  },
+  "protocol": "CANONICAL_JSONL_V1",
+  "communication": {
+    "protocol": "stdio"
+  },
+  "syntheticShadowOnly": true,
+  "persistentEnablementAuthorized": false,
+  "networkAuthorized": false,
+  "realBackendAuthorized": false,
+  "realAuthAuthorized": false,
+  "filesystemReadsAuthorized": false,
+  "filesystemWritesAuthorized": false,
+  "databaseAccessAuthorized": false,
+  "storageAccessAuthorized": false,
+  "providerCallsAuthorized": false,
+  "bridgeCallsAuthorized": false,
+  "privateDataAuthorized": false,
+  "notificationAuthorized": false,
+  "notificationSendAuthorized": false,
+  "messageDispatchAuthorized": false,
+  "calendarWriteAuthorized": false,
+  "externalSyncAuthorized": false,
+  "businessWriteAuthorized": false,
+  "businessWritesAuthorized": false,
+  "allowedActions": [
+    "plan_project_tasks_from_snapshot"
+  ],
+  "allowedActionCount": 1,
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "plan_project_tasks_from_snapshot",
+        "creationId": "jenn.photo-studio.plugin-project-tasks",
+        "syntheticShadowOnly": true
+      }
+    ]
+  },
+  "sourcePreserved": true,
+  "fullParity": false,
+  "fullParityClaimed": false,
+  "userAcceptanceStatus": "PENDING",
+  "productionEnabled": false,
+  "retirement": false,
+  "creationIds": [
+    "jenn.photo-studio.plugin-project-tasks"
+  ]
+}

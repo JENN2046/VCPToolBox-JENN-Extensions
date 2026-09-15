@@ -28,5 +28,22 @@
         "description": "Create or update a local shadow archive record for a completed project."
       }
     ]
+  },
+  "externalRuntimeCompatibility": {
+    "adapterProfile": "LEGACY_FLAT_ACTION_V1",
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "executionAuthorized": false,
+    "runtimeEligible": false,
+    "isolatedProcessRequired": true,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "secretValueIncluded": false,
+    "credentialValueIncluded": false,
+    "hostEnvInheritanceAllowed": false,
+    "classification": "PRESERVED_PENDING_PROJECT_DATA_WRITE_GATE",
+    "projectDataRequired": true,
+    "filesystemWritesPossible": true,
+    "futureGate": "PHOTOSTUDIO_PROJECT_DATA_WRITE"
   }
 }

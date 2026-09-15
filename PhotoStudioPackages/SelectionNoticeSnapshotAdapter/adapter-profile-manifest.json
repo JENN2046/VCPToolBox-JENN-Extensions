@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 3,
+  "copyVersion": 2,
+  "profileId": "photo-studio-selection-notice-snapshot-v2",
+  "packageId": "jenn.photostudio.selection-notice-snapshot-adapter",
+  "canonicalCreationId": "jenn.photo-studio.plugin-selection-notice",
+  "invalidInferredIdSupported": false,
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "protocol": "CANONICAL_JSONL_V1",
+  "syntheticShadowOnly": true,
+  "status": "PURE_SNAPSHOT_ADAPTER",
+  "snapshotProjectionImplemented": true,
+  "runtimeActionEligible": true,
+  "fullParity": false,
+  "legacySourceReadsLocalData": true,
+  "legacyUsesStoreLock": true,
+  "legacyUsesCurrentTime": true,
+  "pureTemplateAvailable": true,
+  "legacyTemplateParityStatus": "INTENTIONALLY_DIVERGED_BY_JENN_COPY_REVISION",
+  "legacyTemplateEvidencePreserved": true,
+  "userDirectedRevision": true,
+  "methodFallbackPolicy": "OMIT_WHEN_NOT_PROVIDED",
+  "previousExactTemplateParityEvidence": {
+    "sourceCommit": "f4ca91afaef003869db0a27d457c10cb589c322a",
+    "status": "PRESERVED_AS_HISTORICAL_EVIDENCE"
+  },
+  "userAcceptanceStatus": "PENDING",
+  "productionEnabled": false,
+  "allowedActions": [
+    "build_selection_notice_from_snapshot"
+  ],
+  "profiles": [
+    {
+      "creationId": "jenn.photo-studio.plugin-selection-notice",
+      "displayName": "PhotoStudioSelectionNotice",
+      "status": "PURE_SNAPSHOT_ADAPTER",
+      "projectionImplemented": true,
+      "runtimeActionEligible": "synthetic-only",
+      "fullParity": false,
+      "legacyTemplateParityStatus": "INTENTIONALLY_DIVERGED_BY_JENN_COPY_REVISION",
+      "legacyTemplateEvidencePreserved": true,
+      "userDirectedRevision": true,
+      "methodFallbackPolicy": "OMIT_WHEN_NOT_PROVIDED",
+      "previousExactTemplateParityEvidence": {
+        "sourceCommit": "f4ca91afaef003869db0a27d457c10cb589c322a",
+        "status": "PRESERVED_AS_HISTORICAL_EVIDENCE"
+      },
+      "legacyTemplatePath": "modules/photoStudio/selectionNoticeTemplates.js",
+      "action": "build_selection_notice_from_snapshot",
+      "requiredSnapshotFields": [
+        "generatedAt",
+        "projectSnapshot.project_id",
+        "projectSnapshot.project_name",
+        "projectSnapshot.status",
+        "tone"
+      ],
+      "optionalSnapshotFields": [
+        "projectSnapshot.customer_id",
+        "projectSnapshot.due_date",
+        "customerSnapshot.customer_id",
+        "customerSnapshot.customer_name",
+        "selectionDeadline",
+        "selectionMethod",
+        "noteToClient"
+      ],
+      "coverageGaps": [
+        "LOCAL_PROJECT_LOOKUP_NOT_PERFORMED",
+        "LOCAL_CUSTOMER_LOOKUP_NOT_PERFORMED",
+        "STORE_LOCK_BEHAVIOR_NOT_REPRODUCED",
+        "REAL_PROJECT_STATUS_NOT_VERIFIED",
+        "REAL_SELECTION_GALLERY_NOT_VERIFIED",
+        "REAL_SELECTION_LINK_NOT_VERIFIED",
+        "NOTIFICATION_NOT_SENT",
+        "MESSAGE_NOT_DISPATCHED",
+        "CURRENT_TIME_FALLBACK_REMOVED",
+        "LEGACY_TEMPLATE_COPY_INTENTIONALLY_REVISED"
+      ]
+    }
+  ],
+  "coverageGaps": [
+    "LOCAL_PROJECT_LOOKUP_NOT_PERFORMED",
+    "LOCAL_CUSTOMER_LOOKUP_NOT_PERFORMED",
+    "STORE_LOCK_BEHAVIOR_NOT_REPRODUCED",
+    "REAL_PROJECT_STATUS_NOT_VERIFIED",
+    "REAL_SELECTION_GALLERY_NOT_VERIFIED",
+    "REAL_SELECTION_LINK_NOT_VERIFIED",
+    "NOTIFICATION_NOT_SENT",
+    "MESSAGE_NOT_DISPATCHED",
+    "CURRENT_TIME_FALLBACK_REMOVED",
+    "LEGACY_TEMPLATE_COPY_INTENTIONALLY_REVISED"
+  ]
+}
