@@ -46,6 +46,13 @@ function runGit(args, options = {}) {
   return result.stdout;
 }
 
+function decodeUtf8Exact(bytes, label) {
+  if (!Buffer.isBuffer(bytes)) throw new Error(`${label} must be read as bytes`);
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error(`${label} must be valid UTF-8`);
+  return text;
+}
+
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -251,10 +258,13 @@ function writeLf(filePath, content) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const packageFilesText = fs.readFileSync(args.packageFiles, 'utf8');
+  const packageFilesBytes = fs.readFileSync(args.packageFiles);
+  const packageFilesText = decodeUtf8Exact(packageFilesBytes, 'PACKAGE_FILES');
+  const packageFilesCanonicalBytes = Buffer.from(packageFilesText.replace(/\r\n/g, '\n'), 'utf8');
   const packageFiles = JSON.parse(packageFilesText);
   validatePackageFiles(packageFiles);
-  runGit(['cat-file', '-e', `${packageFiles.payloadSourceCommit}^{commit}`]);
+  const payloadSourceType = runGit(['cat-file', '-t', packageFiles.payloadSourceCommit]).trim();
+  if (payloadSourceType !== 'commit') throw new Error('payloadSourceCommit must identify a commit object directly');
 
   const paths = packageFiles.packages.flatMap((pkg) => pkg.files).sort(comparePosixBytewise);
   // Validate every selected tree entry before reading the first payload body.
@@ -266,7 +276,7 @@ function main() {
   const attestation = {
     schemaVersion: 1,
     payloadSourceCommit: packageFiles.payloadSourceCommit,
-    packageFilesSha256: crypto.createHash('sha256').update(Buffer.from(packageFilesText.replace(/\r\n/g, '\n'))).digest('hex'),
+    packageFilesSha256: crypto.createHash('sha256').update(packageFilesCanonicalBytes).digest('hex'),
     manifestSha256: crypto.createHash('sha256').update(Buffer.from(manifestText, 'utf8')).digest('hex'),
     manifestEntryCount: lines.length,
     creationRegistrySha256: registryHash,
