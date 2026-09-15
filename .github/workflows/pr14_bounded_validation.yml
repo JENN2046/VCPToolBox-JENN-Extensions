@@ -1,0 +1,25 @@
+name: PR14 bounded validation
+
+on:
+  push:
+    branches:
+      - codex/three-way-manifest-admission-source-20260914
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch commit
+        uses: actions/checkout@v4
+      - name: Syntax check manifest tools
+        run: |
+          node --check scripts/build-deterministic-manifest.cjs
+          node --check scripts/verify-deterministic-manifest.cjs
+      - name: Run original PR14 synthetic suite
+        run: node --test tests/deterministic-manifest-boundary.test.cjs
+      - name: Run final focused regressions
+        run: node --test tests/deterministic-manifest-final-boundary.test.cjs
