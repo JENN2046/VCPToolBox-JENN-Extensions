@@ -87,6 +87,13 @@ function sha256Buffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
+function decodeUtf8Exact(bytes, label) {
+  if (!Buffer.isBuffer(bytes)) throw new Error(`${label} must be read as bytes`);
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error(`${label} must be valid UTF-8`);
+  return text;
+}
+
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -197,11 +204,16 @@ function parseManifest(raw) {
 
 function main() {
   const args = parseArgs(process.argv);
-  const packageRaw = fs.readFileSync(args.packageFiles, 'utf8').replace(/\r\n/g, '\n');
+  const packageBytes = fs.readFileSync(args.packageFiles);
+  const packageText = decodeUtf8Exact(packageBytes, 'PACKAGE_FILES');
+  const packageRaw = packageText.replace(/\r\n/g, '\n');
+  const packageCanonicalBytes = Buffer.from(packageRaw, 'utf8');
   const packageFiles = JSON.parse(packageRaw);
-  const manifestRaw = fs.readFileSync(args.manifest, 'utf8');
+  const manifestBytes = fs.readFileSync(args.manifest);
+  const manifestRaw = decodeUtf8Exact(manifestBytes, 'MANIFEST');
   const manifestEntries = parseManifest(manifestRaw);
-  const attestationRaw = fs.readFileSync(args.attestation, 'utf8').replace(/\r\n/g, '\n');
+  const attestationBytes = fs.readFileSync(args.attestation);
+  const attestationRaw = decodeUtf8Exact(attestationBytes, 'PAYLOAD_ATTESTATION').replace(/\r\n/g, '\n');
   const attestation = JSON.parse(attestationRaw);
 
   const counters = {
@@ -227,7 +239,12 @@ function main() {
     finish();
     return;
   }
-  git(['cat-file', '-e', `${packageFiles.payloadSourceCommit}^{commit}`]);
+  const payloadSourceType = git(['cat-file', '-t', packageFiles.payloadSourceCommit]).trim();
+  if (payloadSourceType !== 'commit') {
+    failures.push('payloadSourceCommit must identify a commit object directly');
+    finish();
+    return;
+  }
   const casefold = new Set();
   const seen = new Set();
   for (const pkg of packageList) {
@@ -305,8 +322,8 @@ function main() {
     return;
   }
 
-  const manifestSha256 = sha256Buffer(Buffer.from(manifestRaw, 'utf8'));
-  const packageFilesSha256 = sha256Buffer(Buffer.from(packageRaw, 'utf8'));
+  const manifestSha256 = sha256Buffer(manifestBytes);
+  const packageFilesSha256 = sha256Buffer(packageCanonicalBytes);
   if (attestation.payloadSourceCommit !== packageFiles.payloadSourceCommit) counters.attestation_mismatch_count += 1;
   if (attestation.packageFilesSha256 !== packageFilesSha256) counters.attestation_mismatch_count += 1;
   if (attestation.manifestSha256 !== manifestSha256) counters.attestation_mismatch_count += 1;
