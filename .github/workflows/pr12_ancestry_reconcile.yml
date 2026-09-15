@@ -25,6 +25,8 @@ jobs:
         run: |
           set -euo pipefail
           expected=9a37b107c1de9caaa51884b6df7f284e4e03496d
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$expected"
           cp manifests/MANIFEST.sha256 /tmp/pr12-manifest.sha256
@@ -73,8 +75,6 @@ jobs:
         run: |
           set -euo pipefail
           test -f .git/MERGE_HEAD
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Merge current main into PR12 after bounded manifest reconciliation'
           test "$(git rev-parse HEAD^2)" = '9a37b107c1de9caaa51884b6df7f284e4e03496d'
           git push origin HEAD:${GITHUB_REF_NAME}
