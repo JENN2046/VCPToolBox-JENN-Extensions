@@ -103,6 +103,10 @@ function validatePackageSchema(packageFiles, failures) {
     failures.push('PACKAGE_FILES must be an object');
     return [];
   }
+  const topLevelKeys = ['schemaVersion', 'payloadSourceCommit', 'packages'];
+  for (const key of Object.keys(packageFiles)) {
+    if (!topLevelKeys.includes(key)) failures.push(`PACKAGE_FILES has unsupported property ${key}`);
+  }
   if (packageFiles.schemaVersion !== 1) failures.push('PACKAGE_FILES schemaVersion must be 1');
   if (typeof packageFiles.payloadSourceCommit !== 'string' || !/^[a-f0-9]{40}$/.test(packageFiles.payloadSourceCommit || '')) failures.push('Invalid payloadSourceCommit');
   if (!Array.isArray(packageFiles.packages)) {
@@ -139,11 +143,13 @@ function validatePackageSchema(packageFiles, failures) {
     if (packageIds.has(pkg.packageId)) failures.push(`${label}.packageId is duplicated`);
     packageIds.add(pkg.packageId);
     if (!Array.isArray(pkg.creationIds)) failures.push(`${label}.creationIds must be an array`);
+    else if (pkg.creationIds.some((value) => typeof value !== 'string')) failures.push(`${label}.creationIds items must be strings`);
     if (!isRelativeExactPath(pkg.root || '') || pkg.root.replace(/\/+$/, '').split('/').some(segment => segment === '.' || segment === '')) failures.push(`${label}.root must be an exact relative POSIX path`);
     else roots.push({ packageId: pkg.packageId, root: pkg.root.replace(/\/+$/, '') });
     if (!payloadClasses.has(pkg.payloadClass)) failures.push(`${label}.payloadClass is invalid`);
     if (typeof pkg.runtimeEligible !== 'boolean') failures.push(`${label}.runtimeEligible must be boolean`);
     if (!Array.isArray(pkg.files) || pkg.files.length === 0) failures.push(`${label}.files must be a non-empty array`);
+    else if (pkg.files.some((value) => typeof value !== 'string')) failures.push(`${label}.files items must be strings`);
     if (!Array.isArray(pkg.reviewExceptions)) failures.push(`${label}.reviewExceptions must be an array`);
     for (const [reviewIndex, review] of (Array.isArray(pkg.reviewExceptions) ? pkg.reviewExceptions : []).entries()) {
       const reviewLabel = `${label}.reviewExceptions[${reviewIndex}]`;
@@ -157,9 +163,13 @@ function validatePackageSchema(packageFiles, failures) {
       for (const key of Object.keys(review)) {
         if (!reviewKeys.includes(key)) failures.push(`${reviewLabel} has unsupported property ${key}`);
       }
+      for (const key of ['path', 'reason', 'evidenceReference']) {
+        if (typeof review[key] !== 'string') failures.push(`${reviewLabel}.${key} must be a string`);
+      }
       if (!riskClasses.has(review.riskClassification)) failures.push(`${reviewLabel}.riskClassification is invalid`);
       if (typeof review.runtimeEligible !== 'boolean') failures.push(`${reviewLabel}.runtimeEligible must be boolean`);
     }
+    if (typeof pkg.notes !== 'string') failures.push(`${label}.notes must be a string`);
   }
 
   for (let i = 0; i < roots.length; i += 1) {
