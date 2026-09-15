@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 2,
+  "packageId": "jenn.photostudio.pure-snapshot-planning-adapters",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "protocol": "CANONICAL_JSONL_V1",
+  "syntheticShadowOnly": true,
+  "fullParity": false,
+  "reviewedVersionSuperseded": true,
+  "userDirectedRevision": true,
+  "userAcceptanceStatus": "PENDING",
+  "allowedActions": [
+    "build_case_content_draft_from_snapshot",
+    "build_client_reply_draft_from_snapshot",
+    "prioritize_delivery_actions_from_snapshot"
+  ],
+  "profiles": [
+    {
+      "creationId": "jenn.photo-studio.plugin-case-content-draft",
+      "displayName": "PhotoStudioCaseContentDraft",
+      "status": "PURE_SNAPSHOT_PLANNING_ADAPTER",
+      "projectionImplemented": true,
+      "runtimeActionEligible": "synthetic-only",
+      "fullParity": false,
+      "legacyTemplateParityRequired": false,
+      "legacyTemplateParityStatus": "INTENTIONALLY_DIVERGED_BY_USER_REVISION",
+      "legacyTemplateEvidencePreserved": true,
+      "userDirectedRevision": true,
+      "userAcceptanceStatus": "PENDING",
+      "legacyTemplatePath": "modules/photoStudio/caseContentTemplates.js",
+      "action": "build_case_content_draft_from_snapshot",
+      "requiredSnapshotFields": [
+        "generatedAt",
+        "contentItemSnapshot.project_name",
+        "contentItemSnapshot.project_type",
+        "contentItemSnapshot.content_item_id or contentItemSnapshot.project_id",
+        "tone"
+      ],
+      "optionalSnapshotFields": [
+        "contentItemSnapshot.customer_id",
+        "contentItemSnapshot.customer_name",
+        "contentItemSnapshot.theme",
+        "contentItemSnapshot.deliverables_summary",
+        "contentItemSnapshot.usage_status"
+      ]
+    },
+    {
+      "creationId": "jenn.photo-studio.plugin-reply-draft",
+      "displayName": "PhotoStudioReplyDraft",
+      "status": "PURE_SNAPSHOT_PLANNING_ADAPTER",
+      "projectionImplemented": true,
+      "runtimeActionEligible": "synthetic-only",
+      "fullParity": false,
+      "legacyTemplateParityRequired": false,
+      "legacyTemplateParityStatus": "INTENTIONALLY_DIVERGED_BY_USER_REVISION",
+      "legacyTemplateEvidencePreserved": true,
+      "userDirectedRevision": true,
+      "userAcceptanceStatus": "PENDING",
+      "keyPointsPronounRegisterValidation": "REQUIRED",
+      "addressRegisters": {
+        "formal": "HONORIFIC_NIN",
+        "friendly": "INFORMAL_NI",
+        "warm": "INFORMAL_NI"
+      },
+      "silentPronounRewriteAllowed": false,
+      "fullContextToneTextReviewRequired": 12,
+      "legacyTemplatePath": "modules/photoStudio/replyTemplates.js",
+      "action": "build_client_reply_draft_from_snapshot",
+      "requiredSnapshotFields": [
+        "generatedAt",
+        "projectSnapshot.project_id",
+        "projectSnapshot.project_name",
+        "projectSnapshot.project_type",
+        "projectSnapshot.status",
+        "contextType",
+        "tone"
+      ],
+      "optionalSnapshotFields": [
+        "projectSnapshot.customer_id",
+        "projectSnapshot.start_date",
+        "projectSnapshot.due_date",
+        "customerSnapshot.customer_id",
+        "customerSnapshot.customer_name",
+        "keyPoints"
+      ]
+    },
+    {
+      "creationId": "jenn.photo-studio.plugin-delivery-priority",
+      "displayName": "PhotoStudioDeliveryPriority",
+      "status": "PURE_SNAPSHOT_PLANNING_ADAPTER",
+      "projectionImplemented": true,
+      "runtimeActionEligible": "synthetic-only",
+      "fullParity": false,
+      "legacyTemplateParityRequired": false,
+      "priorityOrderParity": "PRESERVED_WITH_EXPLICIT_TIE_BREAK_RULE",
+      "writeActionParity": "INTENTIONALLY_NOT_PRESERVED",
+      "recommendationSemantics": "ADVISORY_ONLY",
+      "realQueueParity": false,
+      "reviewedVersionSuperseded": true,
+      "userDirectedRevision": true,
+      "userAcceptanceStatus": "PENDING",
+      "action": "prioritize_delivery_actions_from_snapshot",
+      "requiredSnapshotFields": [
+        "referenceDate",
+        "externalExportSnapshots"
+      ],
+      "optionalSnapshotFields": [
+        "generatedAt",
+        "scope",
+        "maxItems"
+      ],
+      "coverageGaps": [
+        "no persistent queue lock",
+        "no external export mutation",
+        "no acknowledgement write",
+        "no notification send",
+        "no retry scheduling write"
+      ]
+    }
+  ]
+}

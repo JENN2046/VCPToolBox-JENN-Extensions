@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 2,
+  "packageId": "jenn.photostudio.pure-snapshot-planning-adapters",
+  "version": "0.1.0",
+  "displayName": "Photo Studio Pure Snapshot Planning Adapters",
+  "payloadClass": "photo-studio-pure-snapshot-planning-adapter",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "entrypoint": "stdio-entrypoint.cjs",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node stdio-entrypoint.cjs"
+  },
+  "protocol": "CANONICAL_JSONL_V1",
+  "communication": {
+    "protocol": "stdio"
+  },
+  "allowedActions": [
+    "build_case_content_draft_from_snapshot",
+    "build_client_reply_draft_from_snapshot",
+    "prioritize_delivery_actions_from_snapshot"
+  ],
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "build_case_content_draft_from_snapshot",
+        "creationId": "jenn.photo-studio.plugin-case-content-draft",
+        "syntheticShadowOnly": true
+      },
+      {
+        "commandIdentifier": "build_client_reply_draft_from_snapshot",
+        "creationId": "jenn.photo-studio.plugin-reply-draft",
+        "syntheticShadowOnly": true
+      },
+      {
+        "commandIdentifier": "prioritize_delivery_actions_from_snapshot",
+        "creationId": "jenn.photo-studio.plugin-delivery-priority",
+        "syntheticShadowOnly": true
+      }
+    ]
+  },
+  "sourcePreserved": true,
+  "networkAuthorized": false,
+  "realBackendAuthorized": false,
+  "realAuthAuthorized": false,
+  "businessWritesAuthorized": false,
+  "filesystemReadsAuthorized": false,
+  "filesystemWritesAuthorized": false,
+  "providerCallsAuthorized": false,
+  "bridgeCallsAuthorized": false,
+  "privateDataAuthorized": false,
+  "databaseAccessAuthorized": false,
+  "storageAccessAuthorized": false,
+  "notificationSendAuthorized": false,
+  "calendarWriteAuthorized": false,
+  "externalSyncAuthorized": false,
+  "persistentEnablementAuthorized": false,
+  "syntheticShadowOnly": true,
+  "fullParityClaimed": false,
+  "reviewedVersionSuperseded": true,
+  "userDirectedRevision": true,
+  "userAcceptanceStatus": "PENDING",
+  "creationIds": [
+    "jenn.photo-studio.plugin-case-content-draft",
+    "jenn.photo-studio.plugin-reply-draft",
+    "jenn.photo-studio.plugin-delivery-priority"
+  ]
+}
