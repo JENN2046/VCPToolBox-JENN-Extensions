@@ -8,9 +8,18 @@ const {
 } = require('../ShootingOperationsPackages/VcpSyncAdapter/index.cjs');
 
 const ACTION_ID = 'PROD-10-ENABLE-VCP-REMOTE-SYNC';
+const BINDING_PATH_ENV = 'PROD10_JENN_SHOOTING_OPERATIONS_BINDING_PATH';
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function resolveAcceptanceBindingPath(env = process.env) {
+  const value = String(env?.[BINDING_PATH_ENV] || '').trim();
+  if (!value || !path.isAbsolute(value)) {
+    throw new Error('PROD10_BINDING_PATH_NOT_PINNED');
+  }
+  return value;
 }
 
 function parseEnvFileKey(filePath, key) {
@@ -74,14 +83,17 @@ function loadBinding(filePath) {
 async function runAcceptance(request) {
   if (!isPlainObject(request)
       || request.actionId !== ACTION_ID
-      || typeof request.bindingPath !== 'string'
       || !Number.isInteger(request.expectedRevision)
       || typeof request.operationId !== 'string'
-      || !isPlainObject(request.snapshot)) {
+      || !isPlainObject(request.snapshot)
+      || Object.hasOwn(request, 'bindingPath')
+      || Object.hasOwn(request, 'endpoint')
+      || Object.hasOwn(request, 'schedulerCredential')
+      || Object.hasOwn(request, 'schedulerCredentialSource')) {
     throw new Error('PROD10_ACCEPTANCE_REQUEST_INVALID');
   }
 
-  const binding = loadBinding(request.bindingPath);
+  const binding = loadBinding(resolveAcceptanceBindingPath());
   const schedulerCredential = parseEnvFileKey(
     binding.schedulerCredentialSource.path,
     binding.schedulerCredentialSource.key
@@ -138,7 +150,9 @@ if (require.main === module) {
 
 module.exports = {
   ACTION_ID,
+  BINDING_PATH_ENV,
   loadBinding,
   parseEnvFileKey,
+  resolveAcceptanceBindingPath,
   runAcceptance
 };

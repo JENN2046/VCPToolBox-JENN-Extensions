@@ -75,6 +75,18 @@ function withBindingPath(bindingPath, action) {
     });
 }
 
+function withAcceptanceBindingPath(bindingPath, action) {
+  const key = acceptance.BINDING_PATH_ENV;
+  const previous = process.env[key];
+  process.env[key] = bindingPath;
+  return Promise.resolve()
+    .then(action)
+    .finally(() => {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    });
+}
+
 test('plugin manifest exposes only semantic intent and health to the Agent', () => {
   const manifest = JSON.parse(fs.readFileSync(
     path.resolve(__dirname, '..', 'Plugin', 'JennShootingOperations', 'plugin-manifest.json'),
@@ -373,16 +385,18 @@ test('PROD-10 acceptance harness requires exact action, safe token file and acce
       }
     }));
 
-    const result = await acceptance.runAcceptance({
-      actionId: 'PROD-10-ENABLE-VCP-REMOTE-SYNC',
+    const result = await withAcceptanceBindingPath(
       bindingPath,
-      expectedRevision: 0,
-      operationId: 'prod10-acceptance-test-0001',
-      snapshot: {
-        ...snapshot,
-        tasks: [{ id: 'TASK-ACCEPT', name: 'Acceptance' }]
-      }
-    });
+      () => acceptance.runAcceptance({
+        actionId: 'PROD-10-ENABLE-VCP-REMOTE-SYNC',
+        expectedRevision: 0,
+        operationId: 'prod10-acceptance-test-0001',
+        snapshot: {
+          ...snapshot,
+          tasks: [{ id: 'TASK-ACCEPT', name: 'Acceptance' }]
+        }
+      })
+    );
 
     assert.deepEqual(result, {
       ok: true,
@@ -412,16 +426,26 @@ test('PROD-10 acceptance harness requires exact action, safe token file and acce
         key: 'SCHEDULER_TOKEN'
       }
     }));
-    await assert.rejects(
+    await withAcceptanceBindingPath(disabledBinding, () => assert.rejects(
       acceptance.runAcceptance({
         actionId: 'PROD-10-ENABLE-VCP-REMOTE-SYNC',
-        bindingPath: disabledBinding,
         expectedRevision: 1,
         operationId: 'prod10-acceptance-test-0002',
         snapshot
       }),
       /PROD10_BINDING_NOT_AUTHORIZED/u
-    );
+    ));
+
+    await withAcceptanceBindingPath(bindingPath, () => assert.rejects(
+      acceptance.runAcceptance({
+        actionId: 'PROD-10-ENABLE-VCP-REMOTE-SYNC',
+        bindingPath: disabledBinding,
+        expectedRevision: 1,
+        operationId: 'prod10-acceptance-test-0003',
+        snapshot
+      }),
+      /PROD10_ACCEPTANCE_REQUEST_INVALID/u
+    ));
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
