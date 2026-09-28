@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "packageId": "jenn.shooting-operations.vcp-sync-adapter",
+  "version": "0.1.0",
+  "displayName": "Jenn Shooting Operations VCP Sync Adapter",
+  "payloadClass": "shooting-operations-vcp-sync-adapter",
+  "defaultEnabled": false,
+  "runtimeEnabled": false,
+  "runtimeEligible": true,
+  "trustClass": "ISOLATED_PROCESS",
+  "module": "index.cjs",
+  "entryPoint": {
+    "type": "nodejs-module",
+    "module": "index.cjs"
+  },
+  "sourcePreserved": true,
+  "activationState": "SOURCE_ONLY_RUNTIME_DISABLED",
+  "networkAuthorized": false,
+  "realBackendAuthorized": false,
+  "realAuthAuthorized": false,
+  "businessWritesAuthorized": false,
+  "providerCallsAuthorized": false,
+  "bridgeCallsAuthorized": false,
+  "privateDataAuthorized": false,
+  "databaseAccessAuthorized": false,
+  "storageAccessAuthorized": false,
+  "persistentEnablementAuthorized": false,
+  "productionActionRequired": "PROD-10-ENABLE-VCP-REMOTE-SYNC",
+  "rollbackActionId": "ROLLBACK-09-DISABLE-VCP-CONFIG",
+  "semanticCapabilities": [
+    "read_current_state",
+    "apply_revision_guarded_change",
+    "verify_after_write"
+  ],
+  "secretBoundary": {
+    "rawCredentialExposedToAgent": false,
+    "rawCredentialPersistedByPackage": false,
+    "rawCredentialLoggedByPackage": false
+  }
+}
