@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "categoryKey": "shooting_operations",
+  "category": {
+    "aliases": [
+      "拍摄运营",
+      "摄影运营",
+      "拍摄任务",
+      "项目排期",
+      "shooting operations"
+    ],
+    "defaultTool": "jenn_shooting_operations",
+    "tools": {
+      "jenn_shooting_operations": {
+        "plugin": "JennShootingOperations",
+        "aliases": [
+          "拍摄运营",
+          "拍摄任务",
+          "项目排期",
+          "工作室运营",
+          "jso",
+          "shooting operations"
+        ],
+        "argumentMode": "semantic_passthrough",
+        "fixedArgs": {
+          "action": "SemanticIntent"
+        }
+      }
+    }
+  }
+}
