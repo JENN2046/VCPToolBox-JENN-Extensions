@@ -135,7 +135,7 @@ function classifyIntent(request) {
   if (!text) return 'read';
 
   const writeLike = [
-    /(?:安排|排到|排在|改到|移到|挪到|调整|修改|更新|新增|创建|删除|取消|标记|提交|保存|改成)/u,
+    /(?:安排|排到|排在|改到|移动|移到|挪到|调整|修改|更新|新增|创建|删除|取消|标记|提交|保存|改成)/u,
     /(?:assign|schedule|move|update|create|delete|cancel|modify|save|submit)/iu
   ];
 

@@ -441,6 +441,27 @@ test('write-like JEV intent becomes a proposal and performs no write', async () 
   assert.deepEqual(methods, ['GET']);
 });
 
+test('all mutation verbs advertised by the JEV prompt classify as propose_write', () => {
+  const cases = [
+    '安排音箱项目到周三下午',
+    '移动音箱项目到周三下午',
+    '调整音箱项目排期',
+    '删除音箱项目任务',
+    '创建新的拍摄任务',
+    '修改项目负责人',
+    '更新拍摄状态',
+    '提交新的排期',
+    '保存当前修改'
+  ];
+  for (const jev_expression of cases) {
+    assert.equal(
+      plugin.classifyIntent({ jev_expression }),
+      'propose_write',
+      jev_expression
+    );
+  }
+});
+
 test('unsupported Agent action cannot reach guarded write', async () => {
   const root = tempDir();
   const bindingPath = writeBinding(root, baseBinding('http://127.0.0.1:1'));
