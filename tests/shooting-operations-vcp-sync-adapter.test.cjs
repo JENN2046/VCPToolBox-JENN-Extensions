@@ -561,3 +561,51 @@ test('verification compares against the exact JSON value transmitted on the wire
     assert.equal(Object.hasOwn(result.verifiedSnapshot.tasks[0], 'optionalUndefined'), false);
   });
 });
+
+
+test('guarded write captures revision and operation id getters exactly once', async () => {
+  let expectedRevisionReads = 0;
+  let operationIdReads = 0;
+  let receivedIfMatch = null;
+  let receivedOperationId = null;
+
+  await withServer(async (request, response) => {
+    receivedIfMatch = request.headers['if-match'];
+    receivedOperationId = request.headers['idempotency-key'];
+    await readJson(request);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      ok: true,
+      status: 200,
+      revision: 1,
+      updatedAt: '2026-09-28T00:01:00.000Z'
+    }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    const options = {};
+    Object.defineProperties(options, {
+      expectedRevision: {
+        enumerable: true,
+        get() {
+          expectedRevisionReads += 1;
+          return expectedRevisionReads === 1 ? 0 : 1;
+        }
+      },
+      operationId: {
+        enumerable: true,
+        get() {
+          operationIdReads += 1;
+          return operationIdReads === 1 ? 'prod10-options-once-0001' : 'prod10-options-once-evil';
+        }
+      }
+    });
+
+    const result = await adapter.guardedPush(initialSnapshot(), options);
+    assert.equal(result.revision, 1);
+  });
+
+  assert.equal(expectedRevisionReads, 1);
+  assert.equal(operationIdReads, 1);
+  assert.equal(receivedIfMatch, '0');
+  assert.equal(receivedOperationId, 'prod10-options-once-0001');
+});
