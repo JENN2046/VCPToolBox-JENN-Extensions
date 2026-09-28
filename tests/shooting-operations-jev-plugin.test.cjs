@@ -101,7 +101,78 @@ test('plugin manifest exposes only semantic intent and health to the Agent', () 
   assert.equal(manifest.externalRuntimeCompatibility.credentialValueIncluded, false);
 });
 
-test('JEV category manager applies idempotently and removes only its owned category and prompt block', () => {
+test('JEV managed state applies idempotently and restores unowned prompt bytes exactly', () => {
+  const dir = tempDir();
+  const configPath = path.join(dir, 'jev.json');
+  const promptPath = path.join(dir, 'prompt.txt');
+  const categoryFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'shooting-operations.category.json'
+  );
+  const promptFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'JevToolCall.shooting-operations.fragment.md'
+  );
+  const options = {
+    configPath,
+    promptPath,
+    categoryFragment,
+    promptFragment
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify({
+    version: 1,
+    virtualToolName: 'JEV',
+    maxExpandedCalls: 5,
+    categories: {
+      daily_tools: {
+        aliases: ['日用工具'],
+        defaultTool: 'x',
+        tools: { x: { plugin: 'X' } }
+      }
+    }
+  }));
+  const originalPrompt = 'base prompt\n\n\nintentional spacing\n';
+  fs.writeFileSync(promptPath, originalPrompt);
+
+  manager.applyManagedState(options);
+  const firstPrompt = fs.readFileSync(promptPath, 'utf8');
+  manager.applyManagedState(options);
+  assert.equal(fs.readFileSync(promptPath, 'utf8'), firstPrompt);
+
+  const applied = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(applied.categories.daily_tools.tools.x.plugin, 'X');
+  assert.equal(
+    applied.categories.shooting_operations.tools.jenn_shooting_operations.plugin,
+    'JennShootingOperations'
+  );
+  assert.equal(
+    firstPrompt.split(manager.MARKER_START).length - 1,
+    1
+  );
+
+  const owned = applied.categories.shooting_operations;
+  applied.categories.shooting_operations = {
+    tools: owned.tools,
+    aliases: owned.aliases,
+    defaultTool: owned.defaultTool
+  };
+  fs.writeFileSync(configPath, JSON.stringify(applied, null, 2) + '\n');
+
+  manager.removeManagedState(options);
+  const removed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(removed.categories.shooting_operations, undefined);
+  assert.equal(removed.categories.daily_tools.tools.x.plugin, 'X');
+  assert.equal(fs.readFileSync(promptPath, 'utf8'), originalPrompt);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('category manager fails closed on a conflicting pre-existing shooting category', () => {
   const dir = tempDir();
   const configPath = path.join(dir, 'jev.json');
   const promptPath = path.join(dir, 'prompt.txt');
@@ -118,61 +189,7 @@ test('JEV category manager applies idempotently and removes only its owned categ
     'JevToolCall.shooting-operations.fragment.md'
   );
 
-  fs.writeFileSync(configPath, JSON.stringify({
-    version: 1,
-    virtualToolName: 'JEV',
-    maxExpandedCalls: 5,
-    categories: {
-      daily_tools: {
-        aliases: ['日用工具'],
-        defaultTool: 'x',
-        tools: { x: { plugin: 'X' } }
-      }
-    }
-  }));
-  fs.writeFileSync(promptPath, 'base prompt\n');
-
-  manager.applyCategory(configPath, categoryFragment);
-  manager.applyPrompt(promptPath, promptFragment);
-  manager.applyCategory(configPath, categoryFragment);
-  manager.applyPrompt(promptPath, promptFragment);
-
-  const applied = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  assert.equal(applied.categories.daily_tools.tools.x.plugin, 'X');
-  assert.equal(
-    applied.categories.shooting_operations.tools.jenn_shooting_operations.plugin,
-    'JennShootingOperations'
-  );
-  const prompt = fs.readFileSync(promptPath, 'utf8');
-  assert.equal(
-    prompt.split(manager.MARKER_START).length - 1,
-    1
-  );
-
-  manager.removeCategory(configPath, categoryFragment);
-  manager.removePrompt(promptPath);
-  const removed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  assert.equal(removed.categories.shooting_operations, undefined);
-  assert.equal(removed.categories.daily_tools.tools.x.plugin, 'X');
-  assert.doesNotMatch(
-    fs.readFileSync(promptPath, 'utf8'),
-    /JSO_JEV_CAPABILITY_R1_BEGIN/u
-  );
-
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-test('category manager fails closed on a conflicting pre-existing shooting category', () => {
-  const dir = tempDir();
-  const configPath = path.join(dir, 'jev.json');
-  const fragment = path.resolve(
-    __dirname,
-    '..',
-    'JevCapabilities',
-    'shooting-operations.category.json'
-  );
-
-  fs.writeFileSync(configPath, JSON.stringify({
+  const originalConfig = JSON.stringify({
     categories: {
       shooting_operations: {
         aliases: ['冲突'],
@@ -184,11 +201,128 @@ test('category manager fails closed on a conflicting pre-existing shooting categ
         }
       }
     }
-  }));
+  });
+  fs.writeFileSync(configPath, originalConfig);
+  fs.writeFileSync(promptPath, 'base prompt\n');
 
   assert.throws(
-    () => manager.applyCategory(configPath, fragment),
+    () => manager.applyManagedState({
+      configPath,
+      promptPath,
+      categoryFragment,
+      promptFragment
+    }),
     /JEV_CATEGORY_CONFLICT/u
+  );
+  assert.equal(fs.readFileSync(configPath, 'utf8'), originalConfig);
+  assert.equal(fs.readFileSync(promptPath, 'utf8'), 'base prompt\n');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('managed state preflights prompt conflicts before changing the category file', () => {
+  const dir = tempDir();
+  const configPath = path.join(dir, 'jev.json');
+  const promptPath = path.join(dir, 'prompt.txt');
+  const categoryFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'shooting-operations.category.json'
+  );
+  const promptFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'JevToolCall.shooting-operations.fragment.md'
+  );
+  const originalConfig = JSON.stringify({
+    version: 1,
+    categories: {
+      daily_tools: {
+        aliases: ['日用工具'],
+        defaultTool: 'x',
+        tools: { x: { plugin: 'X' } }
+      }
+    }
+  });
+  const originalPrompt = 'base\n' + manager.MARKER_START + '\npartial\n';
+  fs.writeFileSync(configPath, originalConfig);
+  fs.writeFileSync(promptPath, originalPrompt);
+
+  assert.throws(
+    () => manager.applyManagedState({
+      configPath,
+      promptPath,
+      categoryFragment,
+      promptFragment
+    }),
+    /JEV_PROMPT_MARKER_CONFLICT/u
+  );
+  assert.equal(fs.readFileSync(configPath, 'utf8'), originalConfig);
+  assert.equal(fs.readFileSync(promptPath, 'utf8'), originalPrompt);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('managed state rolls back the first file if the second atomic rename fails', () => {
+  const dir = tempDir();
+  const configPath = path.join(dir, 'jev.json');
+  const promptPath = path.join(dir, 'prompt.txt');
+  const categoryFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'shooting-operations.category.json'
+  );
+  const promptFragment = path.resolve(
+    __dirname,
+    '..',
+    'JevCapabilities',
+    'JevToolCall.shooting-operations.fragment.md'
+  );
+  const originalConfig = JSON.stringify({
+    version: 1,
+    categories: {
+      daily_tools: {
+        aliases: ['日用工具'],
+        defaultTool: 'x',
+        tools: { x: { plugin: 'X' } }
+      }
+    }
+  });
+  const originalPrompt = 'base prompt\n';
+  fs.writeFileSync(configPath, originalConfig);
+  fs.writeFileSync(promptPath, originalPrompt);
+
+  const renameSync = fs.renameSync;
+  let injected = false;
+  fs.renameSync = (source, destination) => {
+    if (!injected
+        && destination === promptPath
+        && source.endsWith('.next')) {
+      injected = true;
+      throw new Error('SYNTHETIC_SECOND_RENAME_FAILURE');
+    }
+    return renameSync(source, destination);
+  };
+  try {
+    assert.throws(
+      () => manager.applyManagedState({
+        configPath,
+        promptPath,
+        categoryFragment,
+        promptFragment
+      }),
+      /SYNTHETIC_SECOND_RENAME_FAILURE/u
+    );
+  } finally {
+    fs.renameSync = renameSync;
+  }
+
+  assert.equal(fs.readFileSync(configPath, 'utf8'), originalConfig);
+  assert.equal(fs.readFileSync(promptPath, 'utf8'), originalPrompt);
+  assert.equal(
+    fs.readdirSync(dir).some(name => name.includes('.jso-jev-')),
+    false
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
