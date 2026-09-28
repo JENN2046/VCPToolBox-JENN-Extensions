@@ -51,6 +51,13 @@ function normalizeBaseUrl(value) {
   return parsed.toString().replace(/\/$/u, '');
 }
 
+function isExplicitLoopbackUrl(value) {
+  const parsed = new URL(value);
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/gu, '');
+  return parsed.protocol === 'http:'
+    && ['localhost', '127.0.0.1', '::1'].includes(hostname);
+}
+
 function validateBoundedInteger(value, label, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
   if (!Number.isInteger(value) || value < min || value > max) {
     throw new TypeError(`${label} must be an integer between ${min} and ${max}`);
@@ -160,6 +167,8 @@ function publicFailure(payload, status, { uncertain = false } = {}) {
 }
 
 class ShootingOperationsSyncAdapter {
+  #schedulerCredential;
+
   constructor({
     baseUrl,
     schedulerCredential = null,
@@ -172,12 +181,17 @@ class ShootingOperationsSyncAdapter {
         && (typeof schedulerCredential !== 'string' || schedulerCredential.length < 16)) {
       throw new TypeError('schedulerCredential must be null or a configured scheduler credential');
     }
+    if (schedulerCredential !== null
+        && !this.baseUrl.startsWith('https://')
+        && !isExplicitLoopbackUrl(this.baseUrl)) {
+      throw new TypeError('schedulerCredential requires HTTPS except for explicit loopback HTTP');
+    }
     if (typeof fetchImpl !== 'function') {
       throw new TypeError('fetch implementation is required');
     }
     validateBoundedInteger(timeoutMs, 'timeoutMs', { min: 1, max: 60_000 });
     validateBoundedInteger(maxResponseBytes, 'maxResponseBytes', { min: 1024, max: 8 * 1024 * 1024 });
-    this.schedulerCredential = schedulerCredential;
+    this.#schedulerCredential = schedulerCredential;
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.maxResponseBytes = maxResponseBytes;
@@ -260,7 +274,7 @@ class ShootingOperationsSyncAdapter {
   }
 
   async guardedPush(snapshot, { expectedRevision, operationId } = {}) {
-    if (typeof this.schedulerCredential !== 'string') {
+    if (typeof this.#schedulerCredential !== 'string') {
       throw new ShootingOperationsSyncError(
         'Scheduler capability is not configured for guarded writes',
         { code: 'WRITE_CAPABILITY_NOT_CONFIGURED' }
@@ -269,10 +283,15 @@ class ShootingOperationsSyncAdapter {
     validateBoundedInteger(expectedRevision, 'expectedRevision');
     validateOperationId(operationId);
     canonicalSnapshotPayload(snapshot);
+    if (!Number.isInteger(snapshot.revision)
+        || snapshot.revision < 0
+        || snapshot.revision !== expectedRevision) {
+      throw new TypeError('snapshot.revision must exactly match expectedRevision');
+    }
 
     const payload = await this.#request('PUT', '/api/v1/snapshot', {
       headers: {
-        Authorization: `Bearer ${this.schedulerCredential}`,
+        Authorization: `Bearer ${this.#schedulerCredential}`,
         'Content-Type': 'application/json',
         'If-Match': String(expectedRevision),
         'Idempotency-Key': operationId
