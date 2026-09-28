@@ -1,5 +1,7 @@
 'use strict';
 
+const { isDeepStrictEqual } = require('node:util');
+
 const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -75,8 +77,73 @@ function canonicalSnapshotPayload(snapshot) {
   };
 }
 
-function sameJson(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+function responseLimitError(status, uncertain) {
+  return new ShootingOperationsSyncError(
+    'Jenn Shooting Operations response exceeded the configured byte limit',
+    { code: 'RESPONSE_LIMIT_EXCEEDED', status, uncertain }
+  );
+}
+
+async function readResponseBytes(response, maxResponseBytes, uncertain) {
+  const contentLength = response.headers?.get?.('content-length');
+  if (contentLength !== null && contentLength !== undefined) {
+    if (!/^\d+$/u.test(contentLength) || Number(contentLength) > maxResponseBytes) {
+      try {
+        await response.body?.cancel?.();
+      } catch {
+        // The bounded failure is authoritative even if transport cancellation fails.
+      }
+      throw responseLimitError(response.status, uncertain);
+    }
+  }
+
+  if (!response.body) return Buffer.alloc(0);
+
+  const chunks = [];
+  let total = 0;
+
+  if (typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = Buffer.from(value);
+        total += chunk.length;
+        if (total > maxResponseBytes) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Do not replace the bounded failure with a cancellation detail.
+          }
+          throw responseLimitError(response.status, uncertain);
+        }
+        chunks.push(chunk);
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // Reader release has no effect on the request verdict.
+      }
+    }
+    return Buffer.concat(chunks, total);
+  }
+
+  for await (const value of response.body) {
+    const chunk = Buffer.from(value);
+    total += chunk.length;
+    if (total > maxResponseBytes) {
+      try {
+        await response.body.destroy?.();
+      } catch {
+        // Do not replace the bounded failure with a cancellation detail.
+      }
+      throw responseLimitError(response.status, uncertain);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function publicFailure(payload, status, { uncertain = false } = {}) {
@@ -131,23 +198,7 @@ class ShootingOperationsSyncAdapter {
         signal: controller.signal
       });
 
-      const contentLength = response.headers?.get?.('content-length');
-      if (contentLength !== null && contentLength !== undefined) {
-        if (!/^\d+$/u.test(contentLength) || Number(contentLength) > this.maxResponseBytes) {
-          throw new ShootingOperationsSyncError(
-            'Jenn Shooting Operations response exceeded the configured byte limit',
-            { code: 'RESPONSE_LIMIT_EXCEEDED', status: response.status, uncertain: false }
-          );
-        }
-      }
-
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > this.maxResponseBytes) {
-        throw new ShootingOperationsSyncError(
-          'Jenn Shooting Operations response exceeded the configured byte limit',
-          { code: 'RESPONSE_LIMIT_EXCEEDED', status: response.status, uncertain: false }
-        );
-      }
+      const bytes = await readResponseBytes(response, this.maxResponseBytes, isWrite);
 
       let payload = null;
       if (bytes.length > 0) {
@@ -156,18 +207,20 @@ class ShootingOperationsSyncAdapter {
         } catch {
           throw new ShootingOperationsSyncError(
             'Jenn Shooting Operations returned invalid JSON',
-            { code: 'INVALID_RESPONSE', status: response.status, uncertain: false }
+            { code: 'INVALID_RESPONSE', status: response.status, uncertain: isWrite }
           );
         }
       }
       if (payload !== null && !isPlainObject(payload)) {
         throw new ShootingOperationsSyncError(
           'Jenn Shooting Operations returned an invalid response shape',
-          { code: 'INVALID_RESPONSE', status: response.status, uncertain: false }
+          { code: 'INVALID_RESPONSE', status: response.status, uncertain: isWrite }
         );
       }
       if (!response.ok) {
-        throw publicFailure(payload, response.status, { uncertain: false });
+        throw publicFailure(payload, response.status, {
+          uncertain: isWrite && response.status >= 500
+        });
       }
       return payload;
     } catch (error) {
@@ -233,7 +286,7 @@ class ShootingOperationsSyncAdapter {
         || typeof payload.updatedAt !== 'string') {
       throw new ShootingOperationsSyncError(
         'Jenn Shooting Operations returned an invalid guarded-write response',
-        { code: 'INVALID_RESPONSE', status: 200 }
+        { code: 'INVALID_RESPONSE', status: 200, uncertain: true }
       );
     }
     return payload;
@@ -245,7 +298,7 @@ class ShootingOperationsSyncAdapter {
     const verified = await this.pull();
 
     if (verified.revision !== write.revision
-        || !sameJson(canonicalSnapshotPayload(verified), intended)) {
+        || !isDeepStrictEqual(canonicalSnapshotPayload(verified), intended)) {
       throw new ShootingOperationsSyncError(
         'Jenn Shooting Operations verification pull did not match the guarded write',
         {
