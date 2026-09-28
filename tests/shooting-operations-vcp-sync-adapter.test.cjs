@@ -388,3 +388,61 @@ test('checksum manifest binds the exact runtime adapter source and package metad
     assert.equal(entries.get(relativePath), actual, relativePath);
   }
 });
+
+
+test('guarded write rejects a stale snapshot revision before network access', async () => {
+  let calls = 0;
+  const adapter = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://example.invalid',
+    schedulerCredential,
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error('should not run');
+    }
+  });
+  const stale = { ...initialSnapshot(), revision: 0 };
+  await assert.rejects(
+    () => adapter.guardedPush(stale, {
+      expectedRevision: 1,
+      operationId: 'prod10-stale-snapshot-0001'
+    }),
+    /snapshot\.revision must exactly match expectedRevision/u
+  );
+  assert.equal(calls, 0);
+});
+
+test('scheduler credential requires HTTPS except explicit loopback HTTP', () => {
+  assert.throws(
+    () => new ShootingOperationsSyncAdapter({
+      baseUrl: 'http://example.com',
+      schedulerCredential
+    }),
+    /requires HTTPS except for explicit loopback HTTP/u
+  );
+
+  assert.doesNotThrow(() => new ShootingOperationsSyncAdapter({
+    baseUrl: 'http://127.0.0.1:3800',
+    schedulerCredential
+  }));
+  assert.doesNotThrow(() => new ShootingOperationsSyncAdapter({
+    baseUrl: 'http://localhost:3800',
+    schedulerCredential
+  }));
+  assert.doesNotThrow(() => new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://jso.example.test',
+    schedulerCredential
+  }));
+});
+
+test('scheduler credential is private and absent from serialized adapter state', () => {
+  const adapter = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://example.invalid',
+    schedulerCredential,
+    fetchImpl: async () => {
+      throw new Error('not called');
+    }
+  });
+  assert.equal(adapter.schedulerCredential, undefined);
+  assert.equal(Object.keys(adapter).includes('schedulerCredential'), false);
+  assert.equal(JSON.stringify(adapter).includes(schedulerCredential), false);
+});
