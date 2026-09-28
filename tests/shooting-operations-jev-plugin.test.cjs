@@ -446,3 +446,32 @@ test('health report is low-disclosure and Agent write capability remains false',
   assert.equal(JSON.stringify(result).includes('/secret/location'), false);
   assert.equal(JSON.stringify(result).includes('SCHEDULER_TOKEN'), false);
 });
+
+test('runtime manifest binds the JEV-first plugin and category source bytes', () => {
+  const crypto = require('node:crypto');
+  const manifestPath = path.resolve(__dirname, '..', 'manifests', 'MANIFEST.sha256');
+  const rows = fs.readFileSync(manifestPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map(line => {
+      const match = /^([a-f0-9]{64})  (.+)$/u.exec(line);
+      assert.ok(match, 'invalid checksum row');
+      return [match[2], match[1]];
+    });
+  const entries = new Map(rows);
+  const sourcePaths = [
+    'JevCapabilities/JevToolCall.shooting-operations.fragment.md',
+    'JevCapabilities/shooting-operations.category.json',
+    'Plugin/JennShootingOperations/JennShootingOperations.js',
+    'Plugin/JennShootingOperations/binding.example.json',
+    'Plugin/JennShootingOperations/binding.schema.json',
+    'Plugin/JennShootingOperations/plugin-manifest.json'
+  ];
+
+  for (const relativePath of sourcePaths) {
+    const actual = crypto.createHash('sha256')
+      .update(fs.readFileSync(path.resolve(__dirname, '..', relativePath)))
+      .digest('hex');
+    assert.equal(entries.get(relativePath), actual, relativePath);
+  }
+});
