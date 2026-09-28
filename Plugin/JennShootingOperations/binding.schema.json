@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jenn-shooting-operations-binding-r1",
+  "title": "Jenn Shooting Operations VCP runtime binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "enabled",
+    "readCapabilityEnabled",
+    "acceptanceWriteEnabled",
+    "endpoint",
+    "productionActionRequired",
+    "rollbackActionId"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "readCapabilityEnabled": {
+      "type": "boolean"
+    },
+    "acceptanceWriteEnabled": {
+      "type": "boolean"
+    },
+    "endpoint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "productionActionRequired": {
+      "const": "PROD-10-ENABLE-VCP-REMOTE-SYNC"
+    },
+    "rollbackActionId": {
+      "const": "ROLLBACK-09-DISABLE-VCP-CONFIG"
+    },
+    "schedulerCredentialSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "path",
+        "key"
+      ],
+      "properties": {
+        "type": {
+          "const": "env_file"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "const": "SCHEDULER_TOKEN"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "acceptanceWriteEnabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "schedulerCredentialSource"
+        ]
+      }
+    }
+  ]
+}

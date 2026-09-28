@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "readCapabilityEnabled": false,
+  "acceptanceWriteEnabled": false,
+  "endpoint": "https://jso.example.invalid",
+  "productionActionRequired": "PROD-10-ENABLE-VCP-REMOTE-SYNC",
+  "rollbackActionId": "ROLLBACK-09-DISABLE-VCP-CONFIG",
+  "schedulerCredentialSource": {
+    "type": "env_file",
+    "path": "/absolute/path/to/.env.tokens",
+    "key": "SCHEDULER_TOKEN"
+  }
+}

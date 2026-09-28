@@ -1,0 +1,49 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "JennShootingOperations",
+  "displayName": "Jenn Shooting Operations",
+  "version": "0.1.0",
+  "description": "JEV-first isolated stdio capability for Jenn Shooting Operations. Agent-facing execution is read/propose only; production guarded writes remain behind the separate PROD-10 acceptance harness.",
+  "author": "JENN2046",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node JennShootingOperations.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 15000
+  },
+  "configSchema": {},
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "SemanticIntent",
+        "description": "JEV-first entry. Read intents return current JSO state; mutation intents return a non-writing proposal envelope."
+      },
+      {
+        "commandIdentifier": "HealthCheck",
+        "description": "Report low-disclosure runtime binding and capability state without contacting JSO or exposing credentials."
+      }
+    ]
+  },
+  "externalRuntimeCompatibility": {
+    "adapterProfile": "JEV_SEMANTIC_PASSTHROUGH_R1",
+    "defaultEnabled": false,
+    "runtimeEnabled": false,
+    "executionAuthorized": false,
+    "runtimeEligible": true,
+    "isolatedProcessRequired": true,
+    "providerCalls": false,
+    "bridgeCalls": false,
+    "secretValueIncluded": false,
+    "credentialValueIncluded": false,
+    "hostEnvInheritanceAllowed": false,
+    "productionActionRequired": "PROD-10-ENABLE-VCP-REMOTE-SYNC",
+    "rollbackActionId": "ROLLBACK-09-DISABLE-VCP-CONFIG"
+  },
+  "compatibility": {
+    "vcpVersion": ">=1.0.0",
+    "nodeVersion": ">=24.0.0"
+  }
+}
