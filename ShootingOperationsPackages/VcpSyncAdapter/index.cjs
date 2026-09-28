@@ -84,6 +84,53 @@ function canonicalSnapshotPayload(snapshot) {
   };
 }
 
+function prepareWireSnapshot(snapshot, expectedRevision) {
+  canonicalSnapshotPayload(snapshot);
+  if (!Number.isInteger(snapshot.revision)
+      || snapshot.revision < 0
+      || snapshot.revision !== expectedRevision) {
+    throw new TypeError('snapshot.revision must exactly match expectedRevision');
+  }
+
+  let body;
+  try {
+    body = JSON.stringify({
+      schemaVersion: 1,
+      revision: expectedRevision,
+      updatedAt: snapshot.updatedAt,
+      products: snapshot.products,
+      tasks: snapshot.tasks,
+      sessions: snapshot.sessions
+    });
+  } catch {
+    throw new TypeError('snapshot must be JSON serializable');
+  }
+  if (typeof body !== 'string') {
+    throw new TypeError('snapshot must be JSON serializable');
+  }
+
+  let wireSnapshot;
+  try {
+    wireSnapshot = JSON.parse(body);
+  } catch {
+    throw new TypeError('snapshot must serialize to valid JSON');
+  }
+  if (!isPlainObject(wireSnapshot)
+      || wireSnapshot.schemaVersion !== 1
+      || wireSnapshot.revision !== expectedRevision
+      || !Array.isArray(wireSnapshot.products)
+      || !Array.isArray(wireSnapshot.tasks)
+      || !Array.isArray(wireSnapshot.sessions)) {
+    throw new TypeError('serialized snapshot does not satisfy the guarded write envelope');
+  }
+
+  return {
+    body,
+    wireSnapshot,
+    intendedPayload: canonicalSnapshotPayload(wireSnapshot)
+  };
+}
+
 function responseLimitError(status, uncertain) {
   return new ShootingOperationsSyncError(
     'Jenn Shooting Operations response exceeded the configured byte limit',
@@ -167,7 +214,11 @@ function publicFailure(payload, status, { uncertain = false } = {}) {
 }
 
 class ShootingOperationsSyncAdapter {
+  #baseUrl;
   #schedulerCredential;
+  #fetchImpl;
+  #timeoutMs;
+  #maxResponseBytes;
 
   constructor({
     baseUrl,
@@ -176,14 +227,14 @@ class ShootingOperationsSyncAdapter {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
   } = {}) {
-    this.baseUrl = normalizeBaseUrl(baseUrl);
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
     if (schedulerCredential !== null
         && (typeof schedulerCredential !== 'string' || schedulerCredential.length < 16)) {
       throw new TypeError('schedulerCredential must be null or a configured scheduler credential');
     }
     if (schedulerCredential !== null
-        && !this.baseUrl.startsWith('https://')
-        && !isExplicitLoopbackUrl(this.baseUrl)) {
+        && !normalizedBaseUrl.startsWith('https://')
+        && !isExplicitLoopbackUrl(normalizedBaseUrl)) {
       throw new TypeError('schedulerCredential requires HTTPS except for explicit loopback HTTP');
     }
     if (typeof fetchImpl !== 'function') {
@@ -191,18 +242,21 @@ class ShootingOperationsSyncAdapter {
     }
     validateBoundedInteger(timeoutMs, 'timeoutMs', { min: 1, max: 60_000 });
     validateBoundedInteger(maxResponseBytes, 'maxResponseBytes', { min: 1024, max: 8 * 1024 * 1024 });
+
+    this.#baseUrl = normalizedBaseUrl;
     this.#schedulerCredential = schedulerCredential;
-    this.fetchImpl = fetchImpl;
-    this.timeoutMs = timeoutMs;
-    this.maxResponseBytes = maxResponseBytes;
+    this.#fetchImpl = fetchImpl;
+    this.#timeoutMs = timeoutMs;
+    this.#maxResponseBytes = maxResponseBytes;
+    Object.freeze(this);
   }
 
   async #request(method, path, { headers = {}, body } = {}) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
     const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(method);
     try {
-      const response = await this.fetchImpl(new URL(path, `${this.baseUrl}/`), {
+      const response = await this.#fetchImpl(new URL(path, `${this.#baseUrl}/`), {
         method,
         headers: {
           Accept: 'application/json',
@@ -212,7 +266,7 @@ class ShootingOperationsSyncAdapter {
         signal: controller.signal
       });
 
-      const bytes = await readResponseBytes(response, this.maxResponseBytes, isWrite);
+      const bytes = await readResponseBytes(response, this.#maxResponseBytes, isWrite);
 
       let payload = null;
       if (bytes.length > 0) {
@@ -273,22 +327,7 @@ class ShootingOperationsSyncAdapter {
     return payload.snapshot;
   }
 
-  async guardedPush(snapshot, { expectedRevision, operationId } = {}) {
-    if (typeof this.#schedulerCredential !== 'string') {
-      throw new ShootingOperationsSyncError(
-        'Scheduler capability is not configured for guarded writes',
-        { code: 'WRITE_CAPABILITY_NOT_CONFIGURED' }
-      );
-    }
-    validateBoundedInteger(expectedRevision, 'expectedRevision');
-    validateOperationId(operationId);
-    canonicalSnapshotPayload(snapshot);
-    if (!Number.isInteger(snapshot.revision)
-        || snapshot.revision < 0
-        || snapshot.revision !== expectedRevision) {
-      throw new TypeError('snapshot.revision must exactly match expectedRevision');
-    }
-
+  async #guardedPushPrepared(prepared, { expectedRevision, operationId }) {
     const payload = await this.#request('PUT', '/api/v1/snapshot', {
       headers: {
         Authorization: `Bearer ${this.#schedulerCredential}`,
@@ -296,7 +335,7 @@ class ShootingOperationsSyncAdapter {
         'If-Match': String(expectedRevision),
         'Idempotency-Key': operationId
       },
-      body: JSON.stringify(snapshot)
+      body: prepared.body
     });
 
     if (payload?.ok !== true
@@ -311,13 +350,30 @@ class ShootingOperationsSyncAdapter {
     return payload;
   }
 
-  async guardedPushAndVerify(snapshot, { expectedRevision, operationId } = {}) {
-    const intended = canonicalSnapshotPayload(snapshot);
-    const write = await this.guardedPush(snapshot, { expectedRevision, operationId });
+  #prepareGuardedPush(snapshot, { expectedRevision, operationId } = {}) {
+    if (typeof this.#schedulerCredential !== 'string') {
+      throw new ShootingOperationsSyncError(
+        'Scheduler capability is not configured for guarded writes',
+        { code: 'WRITE_CAPABILITY_NOT_CONFIGURED' }
+      );
+    }
+    validateBoundedInteger(expectedRevision, 'expectedRevision');
+    validateOperationId(operationId);
+    return prepareWireSnapshot(snapshot, expectedRevision);
+  }
+
+  async guardedPush(snapshot, options = {}) {
+    const prepared = this.#prepareGuardedPush(snapshot, options);
+    return this.#guardedPushPrepared(prepared, options);
+  }
+
+  async guardedPushAndVerify(snapshot, options = {}) {
+    const prepared = this.#prepareGuardedPush(snapshot, options);
+    const write = await this.#guardedPushPrepared(prepared, options);
     const verified = await this.pull();
 
     if (verified.revision !== write.revision
-        || !isDeepStrictEqual(canonicalSnapshotPayload(verified), intended)) {
+        || !isDeepStrictEqual(canonicalSnapshotPayload(verified), prepared.intendedPayload)) {
       throw new ShootingOperationsSyncError(
         'Jenn Shooting Operations verification pull did not match the guarded write',
         {
