@@ -446,3 +446,118 @@ test('scheduler credential is private and absent from serialized adapter state',
   assert.equal(Object.keys(adapter).includes('schedulerCredential'), false);
   assert.equal(JSON.stringify(adapter).includes(schedulerCredential), false);
 });
+
+
+test('validated base URL and credential-bearing transport cannot be replaced after construction', async () => {
+  let calls = 0;
+  const originalFetch = async (url, options) => {
+    calls += 1;
+    assert.equal(String(url), 'https://safe.example/api/v1/snapshot');
+    assert.equal(options.headers.Authorization, undefined);
+    return new Response(JSON.stringify({ ok: true, snapshot: initialSnapshot() }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+  const adapter = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://safe.example',
+    schedulerCredential,
+    fetchImpl: originalFetch
+  });
+
+  assert.equal(Object.isFrozen(adapter), true);
+  assert.throws(() => {
+    adapter.baseUrl = 'http://non-loopback.example';
+  }, TypeError);
+  assert.throws(() => {
+    adapter.fetchImpl = async () => {
+      throw new Error('credential interceptor must never be installed');
+    };
+  }, TypeError);
+
+  const snapshot = await adapter.pull();
+  assert.equal(snapshot.revision, 0);
+  assert.equal(calls, 1);
+});
+
+test('root toJSON cannot detach the transmitted snapshot from expectedRevision', async () => {
+  let received;
+  await withServer(async (request, response) => {
+    received = await readJson(request);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      ok: true,
+      status: 200,
+      revision: 1,
+      updatedAt: '2026-09-28T00:01:00.000Z'
+    }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    const snapshot = {
+      ...initialSnapshot(),
+      products: [['SKU-SAFE', 'Safe']],
+      toJSON() {
+        return {
+          ...initialSnapshot(),
+          revision: 999,
+          products: [['SKU-EVIL', 'Detached']],
+          tasks: [],
+          sessions: []
+        };
+      }
+    };
+    const result = await adapter.guardedPush(snapshot, {
+      expectedRevision: 0,
+      operationId: 'prod10-root-tojson-0001'
+    });
+    assert.equal(result.revision, 1);
+  });
+
+  assert.equal(received.revision, 0);
+  assert.deepEqual(received.products, [['SKU-SAFE', 'Safe']]);
+});
+
+test('verification compares against the exact JSON value transmitted on the wire', async () => {
+  let stored = initialSnapshot();
+  await withServer(async (request, response) => {
+    if (request.method === 'PUT') {
+      const incoming = await readJson(request);
+      stored = {
+        ...incoming,
+        revision: 1,
+        updatedAt: '2026-09-28T00:01:00.000Z'
+      };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        ok: true,
+        status: 200,
+        revision: 1,
+        updatedAt: stored.updatedAt
+      }));
+      return;
+    }
+
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ok: true, snapshot: stored }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    const snapshot = {
+      ...initialSnapshot(),
+      tasks: [{
+        id: 'TASK-WIRE',
+        sku: 'SKU-WIRE',
+        name: 'Wire',
+        client: '待确认',
+        deliver: '主图',
+        kind: '静物',
+        optionalUndefined: undefined
+      }]
+    };
+    const result = await adapter.guardedPushAndVerify(snapshot, {
+      expectedRevision: 0,
+      operationId: 'prod10-wire-json-0001'
+    });
+    assert.equal(result.verifiedSnapshot.revision, 1);
+    assert.equal(Object.hasOwn(result.verifiedSnapshot.tasks[0], 'optionalUndefined'), false);
+  });
+});
