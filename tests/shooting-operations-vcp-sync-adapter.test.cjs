@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const { createServer } = require('node:http');
 const { once } = require('node:events');
@@ -362,4 +363,28 @@ test('verification accepts semantically identical objects with different key ord
   });
 
   assert.equal(phase, 2);
+});
+
+
+test('checksum manifest binds the exact runtime adapter source and package metadata', () => {
+  const checksumPath = path.resolve(__dirname, '..', 'manifests', 'MANIFEST.sha256');
+  const entries = new Map(
+    fs.readFileSync(checksumPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const match = /^([a-f0-9]{64})  (.+)$/u.exec(line);
+        assert.ok(match, `invalid checksum-manifest line: ${line}`);
+        return [match[2], match[1]];
+      })
+  );
+  for (const relativePath of [
+    'ShootingOperationsPackages/VcpSyncAdapter/index.cjs',
+    'ShootingOperationsPackages/VcpSyncAdapter/package-manifest.json'
+  ]) {
+    const actual = crypto.createHash('sha256')
+      .update(fs.readFileSync(path.resolve(__dirname, '..', relativePath)))
+      .digest('hex');
+    assert.equal(entries.get(relativePath), actual, relativePath);
+  }
 });
