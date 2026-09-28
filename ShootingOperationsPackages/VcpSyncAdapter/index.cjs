@@ -327,20 +327,20 @@ class ShootingOperationsSyncAdapter {
     return payload.snapshot;
   }
 
-  async #guardedPushPrepared(prepared, { expectedRevision, operationId }) {
+  async #guardedPushPrepared(prepared) {
     const payload = await this.#request('PUT', '/api/v1/snapshot', {
       headers: {
         Authorization: `Bearer ${this.#schedulerCredential}`,
         'Content-Type': 'application/json',
-        'If-Match': String(expectedRevision),
-        'Idempotency-Key': operationId
+        'If-Match': String(prepared.expectedRevision),
+        'Idempotency-Key': prepared.operationId
       },
       body: prepared.body
     });
 
     if (payload?.ok !== true
         || !Number.isInteger(payload.revision)
-        || payload.revision !== expectedRevision + 1
+        || payload.revision !== prepared.expectedRevision + 1
         || typeof payload.updatedAt !== 'string') {
       throw new ShootingOperationsSyncError(
         'Jenn Shooting Operations returned an invalid guarded-write response',
@@ -350,26 +350,31 @@ class ShootingOperationsSyncAdapter {
     return payload;
   }
 
-  #prepareGuardedPush(snapshot, { expectedRevision, operationId } = {}) {
+  #prepareGuardedPush(snapshot, options = {}) {
     if (typeof this.#schedulerCredential !== 'string') {
       throw new ShootingOperationsSyncError(
         'Scheduler capability is not configured for guarded writes',
         { code: 'WRITE_CAPABILITY_NOT_CONFIGURED' }
       );
     }
+    const { expectedRevision, operationId } = options;
     validateBoundedInteger(expectedRevision, 'expectedRevision');
     validateOperationId(operationId);
-    return prepareWireSnapshot(snapshot, expectedRevision);
+    return {
+      ...prepareWireSnapshot(snapshot, expectedRevision),
+      expectedRevision,
+      operationId
+    };
   }
 
   async guardedPush(snapshot, options = {}) {
     const prepared = this.#prepareGuardedPush(snapshot, options);
-    return this.#guardedPushPrepared(prepared, options);
+    return this.#guardedPushPrepared(prepared);
   }
 
   async guardedPushAndVerify(snapshot, options = {}) {
     const prepared = this.#prepareGuardedPush(snapshot, options);
-    const write = await this.#guardedPushPrepared(prepared, options);
+    const write = await this.#guardedPushPrepared(prepared);
     const verified = await this.pull();
 
     if (verified.revision !== write.revision
