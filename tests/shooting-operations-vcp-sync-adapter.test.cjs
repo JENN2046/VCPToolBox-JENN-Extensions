@@ -1,0 +1,248 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createServer } = require('node:http');
+const { once } = require('node:events');
+const test = require('node:test');
+
+const packageRoot = path.resolve(__dirname, '..', 'ShootingOperationsPackages', 'VcpSyncAdapter');
+const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package-manifest.json'), 'utf8'));
+const {
+  ShootingOperationsSyncAdapter,
+  ShootingOperationsSyncError
+} = require(path.join(packageRoot, 'index.cjs'));
+
+const schedulerCredential = 'scheduler-test-credential-0001';
+
+async function withServer(handler, action) {
+  const server = createServer(handler);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const address = server.address();
+    return await action(`http://127.0.0.1:${address.port}`);
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+}
+
+async function readJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+function initialSnapshot() {
+  return {
+    schemaVersion: 1,
+    revision: 0,
+    updatedAt: '2026-09-28T00:00:00.000Z',
+    products: [],
+    tasks: [],
+    sessions: []
+  };
+}
+
+test('package source is runtime-eligible but production side effects remain disabled', () => {
+  assert.equal(manifest.defaultEnabled, false);
+  assert.equal(manifest.runtimeEnabled, false);
+  assert.equal(manifest.runtimeEligible, true);
+  assert.equal(manifest.activationState, 'SOURCE_ONLY_RUNTIME_DISABLED');
+  for (const key of [
+    'networkAuthorized',
+    'realBackendAuthorized',
+    'realAuthAuthorized',
+    'businessWritesAuthorized',
+    'providerCallsAuthorized',
+    'bridgeCallsAuthorized',
+    'privateDataAuthorized',
+    'databaseAccessAuthorized',
+    'storageAccessAuthorized',
+    'persistentEnablementAuthorized'
+  ]) {
+    assert.equal(manifest[key], false, key);
+  }
+  assert.equal(manifest.productionActionRequired, 'PROD-10-ENABLE-VCP-REMOTE-SYNC');
+  assert.equal(manifest.rollbackActionId, 'ROLLBACK-09-DISABLE-VCP-CONFIG');
+  assert.equal(manifest.secretBoundary.rawCredentialExposedToAgent, false);
+  assert.equal(manifest.secretBoundary.rawCredentialPersistedByPackage, false);
+  assert.equal(manifest.secretBoundary.rawCredentialLoggedByPackage, false);
+});
+
+test('read-only pull sends no scheduler credential', async () => {
+  await withServer((request, response) => {
+    assert.equal(request.method, 'GET');
+    assert.equal(request.url, '/api/v1/snapshot');
+    assert.equal(request.headers.authorization, undefined);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ok: true, snapshot: initialSnapshot() }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({
+      baseUrl,
+      schedulerCredential
+    });
+    const snapshot = await adapter.pull();
+    assert.equal(snapshot.revision, 0);
+  });
+});
+
+test('pull -> guarded push -> verification pull uses revision and idempotency guards', async () => {
+  let snapshot = initialSnapshot();
+  const methods = [];
+
+  await withServer(async (request, response) => {
+    methods.push(request.method);
+    if (request.method === 'GET' && request.url === '/api/v1/snapshot') {
+      assert.equal(request.headers.authorization, undefined);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, snapshot }));
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/snapshot') {
+      assert.equal(request.headers.authorization, `Bearer ${schedulerCredential}`);
+      assert.equal(request.headers['if-match'], '0');
+      assert.equal(request.headers['idempotency-key'], 'prod10-test-write-0001');
+      const incoming = await readJson(request);
+      snapshot = {
+        schemaVersion: 1,
+        revision: 1,
+        updatedAt: '2026-09-28T00:01:00.000Z',
+        products: incoming.products,
+        tasks: incoming.tasks,
+        sessions: incoming.sessions
+      };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        ok: true,
+        status: 200,
+        revision: 1,
+        updatedAt: snapshot.updatedAt
+      }));
+      return;
+    }
+
+    response.writeHead(404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ok: false, code: 'NOT_FOUND' }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    const current = await adapter.pull();
+    const intended = {
+      ...current,
+      products: [['SKU-ADAPTER', 'Adapter Test']],
+      tasks: [{
+        id: 'TASK-ADAPTER',
+        sku: 'SKU-ADAPTER',
+        name: 'Adapter Test',
+        client: '待确认',
+        deliver: '主图',
+        kind: '静物'
+      }]
+    };
+    const result = await adapter.guardedPushAndVerify(intended, {
+      expectedRevision: current.revision,
+      operationId: 'prod10-test-write-0001'
+    });
+    assert.equal(result.write.revision, 1);
+    assert.equal(result.verifiedSnapshot.revision, 1);
+    assert.equal(result.verifiedSnapshot.tasks[0].id, 'TASK-ADAPTER');
+  });
+
+  assert.deepEqual(methods, ['GET', 'PUT', 'GET']);
+});
+
+test('revision conflict fails closed and is never retried', async () => {
+  let calls = 0;
+  await withServer((request, response) => {
+    calls += 1;
+    response.writeHead(409, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      ok: false,
+      code: 'REVISION_CONFLICT',
+      revision: 7,
+      privateDetail: schedulerCredential
+    }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    await assert.rejects(
+      () => adapter.guardedPush(initialSnapshot(), {
+        expectedRevision: 0,
+        operationId: 'prod10-conflict-0001'
+      }),
+      (error) => {
+        assert.ok(error instanceof ShootingOperationsSyncError);
+        assert.equal(error.code, 'REVISION_CONFLICT');
+        assert.equal(error.status, 409);
+        assert.equal(error.revision, 7);
+        assert.equal(error.uncertain, false);
+        assert.equal(error.message.includes(schedulerCredential), false);
+        assert.equal(JSON.stringify(error).includes(schedulerCredential), false);
+        return true;
+      }
+    );
+  });
+  assert.equal(calls, 1);
+});
+
+test('write transport failure is surfaced as uncertain with one attempt only', async () => {
+  let calls = 0;
+  const adapter = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://example.invalid',
+    schedulerCredential,
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error('network unavailable');
+    }
+  });
+
+  await assert.rejects(
+    () => adapter.guardedPush(initialSnapshot(), {
+      expectedRevision: 0,
+      operationId: 'prod10-uncertain-0001'
+    }),
+    (error) => {
+      assert.ok(error instanceof ShootingOperationsSyncError);
+      assert.equal(error.code, 'WRITE_TRANSPORT_UNCERTAIN');
+      assert.equal(error.uncertain, true);
+      assert.equal(error.message.includes(schedulerCredential), false);
+      return true;
+    }
+  );
+  assert.equal(calls, 1);
+});
+
+test('invalid operation id and missing write capability fail before network access', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    throw new Error('should not run');
+  };
+  const readonly = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://example.invalid',
+    fetchImpl
+  });
+  const writable = new ShootingOperationsSyncAdapter({
+    baseUrl: 'https://example.invalid',
+    schedulerCredential,
+    fetchImpl
+  });
+
+  await assert.rejects(
+    () => readonly.guardedPush(initialSnapshot(), {
+      expectedRevision: 0,
+      operationId: 'prod10-write-0001'
+    }),
+    (error) => error.code === 'WRITE_CAPABILITY_NOT_CONFIGURED'
+  );
+  await assert.rejects(
+    () => writable.guardedPush(initialSnapshot(), {
+      expectedRevision: 0,
+      operationId: 'short'
+    }),
+    /idempotency-key contract/u
+  );
+  assert.equal(calls, 0);
+});
