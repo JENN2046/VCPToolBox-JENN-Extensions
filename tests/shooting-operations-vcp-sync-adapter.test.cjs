@@ -246,3 +246,120 @@ test('invalid operation id and missing write capability fail before network acce
   );
   assert.equal(calls, 0);
 });
+
+
+test('chunked response is stopped at the configured byte cap before full buffering', async () => {
+  await withServer((request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.write('{"ok":true,"padding":"');
+    response.write('x'.repeat(2048));
+    response.end('"}');
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({
+      baseUrl,
+      maxResponseBytes: 1024
+    });
+    await assert.rejects(
+      () => adapter.pull(),
+      (error) => {
+        assert.ok(error instanceof ShootingOperationsSyncError);
+        assert.equal(error.code, 'RESPONSE_LIMIT_EXCEEDED');
+        assert.equal(error.uncertain, false);
+        return true;
+      }
+    );
+  });
+});
+
+test('write-side 5xx is uncertain and is never retried', async () => {
+  let calls = 0;
+  await withServer((request, response) => {
+    calls += 1;
+    response.writeHead(502, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      ok: false,
+      code: 'UPSTREAM_FAILURE',
+      privateDetail: schedulerCredential
+    }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    await assert.rejects(
+      () => adapter.guardedPush(initialSnapshot(), {
+        expectedRevision: 0,
+        operationId: 'prod10-server-uncertain-0001'
+      }),
+      (error) => {
+        assert.ok(error instanceof ShootingOperationsSyncError);
+        assert.equal(error.code, 'UPSTREAM_FAILURE');
+        assert.equal(error.status, 502);
+        assert.equal(error.uncertain, true);
+        assert.equal(error.message.includes(schedulerCredential), false);
+        return true;
+      }
+    );
+  });
+  assert.equal(calls, 1);
+});
+
+test('verification accepts semantically identical objects with different key order', async () => {
+  let intended = null;
+  let phase = 0;
+
+  await withServer(async (request, response) => {
+    phase += 1;
+    if (request.method === 'PUT') {
+      intended = await readJson(request);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        ok: true,
+        status: 200,
+        revision: 1,
+        updatedAt: '2026-09-28T00:01:00.000Z'
+      }));
+      return;
+    }
+
+    const task = intended.tasks[0];
+    const reorderedTask = {
+      kind: task.kind,
+      deliver: task.deliver,
+      client: task.client,
+      name: task.name,
+      sku: task.sku,
+      id: task.id
+    };
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      ok: true,
+      snapshot: {
+        schemaVersion: 1,
+        revision: 1,
+        updatedAt: '2026-09-28T00:01:00.000Z',
+        products: intended.products,
+        tasks: [reorderedTask],
+        sessions: intended.sessions
+      }
+    }));
+  }, async (baseUrl) => {
+    const adapter = new ShootingOperationsSyncAdapter({ baseUrl, schedulerCredential });
+    const snapshot = {
+      ...initialSnapshot(),
+      tasks: [{
+        id: 'TASK-ORDER',
+        sku: 'SKU-ORDER',
+        name: 'Order',
+        client: '待确认',
+        deliver: '主图',
+        kind: '静物'
+      }]
+    };
+    const result = await adapter.guardedPushAndVerify(snapshot, {
+      expectedRevision: 0,
+      operationId: 'prod10-key-order-0001'
+    });
+    assert.equal(result.write.revision, 1);
+    assert.equal(result.verifiedSnapshot.tasks[0].id, 'TASK-ORDER');
+  });
+
+  assert.equal(phase, 2);
+});
