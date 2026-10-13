@@ -1,0 +1,39 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "JennShootingOperations",
+  "displayName": "JSO Local Agent Candidate",
+  "version": "0.2.0-local",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node JsoAgentLocal.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 20000
+  },
+  "configSchema": {
+    "JSO_LOCAL_AGENT_ENDPOINT": "string",
+    "JSO_LOCAL_AGENT_TOKEN": "string"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "read_state",
+        "description": "Read authoritative JSO orders, resources, schedule and progress."
+      },
+      {
+        "commandIdentifier": "preview_shift",
+        "description": "Validate a same-day shift in numeric minutes; no write."
+      },
+      {
+        "commandIdentifier": "reschedule",
+        "description": "Execute an exact delegated command; never self-authorize or automatically retry."
+      },
+      {
+        "commandIdentifier": "read_receipt",
+        "description": "Reconcile the original operationId."
+      }
+    ]
+  }
+}
