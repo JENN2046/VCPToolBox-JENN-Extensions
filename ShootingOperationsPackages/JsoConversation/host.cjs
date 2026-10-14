@@ -12,6 +12,11 @@ function createConversationHost({config,authority,readNativeEvent,delegate,cance
   tool:args=>agent.call(args),verifyOwner:async()=>true,refreshChart,
   ownerCancel:operation=>cancelDelegate({source:service.journal.data.sources[operation.sourceId],command:operation.proposal.command}),
   ownerAuthorize:async operation=>{
+   const {command,before}=operation.proposal;
+   if(!config.resources.includes(command.resourceId))return {ok:false,code:'FORBIDDEN'};
+   const minutes=(Date.parse(command.plannedStart)-Date.parse(before?.plannedStart))/60000;
+   const endMinutes=(Date.parse(command.plannedEnd)-Date.parse(before?.plannedEnd))/60000;
+   if(!Number.isSafeInteger(minutes)||minutes===0||minutes!==endMinutes||Math.abs(minutes)>config.maxMinutes)return {ok:false,code:'SHIFT_LIMIT'};
    const context=contexts.get(operation.sourceId),event=readNativeEvent(context);
    const source=service.journal.data.sources[operation.sourceId];
    if(!event||!source||event.messageId!==source.id||event.text!==source.text||event.conversationId!==source.conversationId||!authority.isHuman(context)||!await sessionCurrent(context,operation.proposal.command.resourceId))return {ok:false,code:'TRUSTED_SESSION_REQUIRED'};
@@ -56,8 +61,8 @@ function createConversationHost({config,authority,readNativeEvent,delegate,cance
    const event=readNativeEvent(context);
    if(!event||!authority.isHuman(context)||!await sessionCurrent(context,resourceId))return {ok:false,code:'TRUSTED_SESSION_REQUIRED'};
    if(!config.resources.includes(resourceId))return {ok:false,code:'FORBIDDEN'};
-   const parsed=parseShift(event.text),follow=/^再(?:延后|推迟|提前)([1-9][0-9]{0,3})分钟[。！!]?$/u.exec(event.text.trim());
-   if(Math.abs(parsed?.minutes??Number(follow?.[1]||0))>config.maxMinutes)return {ok:false,code:'SHIFT_LIMIT'};
+   // The final command is checked in ownerAuthorize. Receipt-only recovery must
+   // remain available even when the original source exceeds today's limit.
    const source=service.captureNative(event);contexts.set(source.id,context);
    try{return await service.submit(source.id,resourceId);}finally{contexts.delete(source.id);}
   },

@@ -27,7 +27,9 @@ function createConfiguredAdapter(config,{fetchImpl=fetch}={}){
   }
   if(payload.resourceId!==undefined&&!config.resources.includes(payload.resourceId))return {ok:false,code:'FORBIDDEN'};
   if(args.command==='preview_shift'&&(!Number.isSafeInteger(payload.minutes)||Math.abs(payload.minutes)>config.maxMinutes||payload.minutes===0))return {ok:false,code:'SHIFT_LIMIT'};
-  return transport.call({command:args.command,payload_json:JSON.stringify(payload)});
+  const result=await transport.call({command:args.command,payload_json:JSON.stringify(payload)});
+  if(args.command==='read_receipt'&&result.ok===true&&(result.kind!=='reschedule'||!config.resources.includes(result.receipt?.resourceId)))return {ok:false,code:'FORBIDDEN'};
+  return result;
  }};
 }
 module.exports={parseConfig,createConfiguredAdapter};

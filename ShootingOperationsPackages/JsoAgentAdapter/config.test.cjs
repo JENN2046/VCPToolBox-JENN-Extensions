@@ -13,3 +13,9 @@ test('config supplies read scope and denies model writes even with native policy
  assert.equal((await adapter.call({command:'read_state',payload_json:'{"resourceScope":["OTHER"]}'})).code,'FORBIDDEN');
  assert.equal((await adapter.call({command:'preview_shift',payload_json:'{"resourceId":"R1","minutes":241}'})).code,'SHIFT_LIMIT');assert.equal(calls.length,1);
 });
+test('receipt scope must be a permitted reschedule, never inferred from missing scope',async()=>{
+ for(const value of [{ok:true,kind:'reschedule',receipt:{resourceId:'R1'}},{ok:true,kind:'reschedule',receipt:{resourceId:'OTHER'}},{ok:true,kind:'reschedule',receipt:{}},{ok:true,kind:'reschedule',receipt:{resourceId:''}},{ok:true,kind:'reschedule',receipt:{resourceId:null}},{ok:true,kind:'proposalDecision',receipt:{}},{ok:true,kind:'proposalGeneration',receipt:{}},{ok:false,code:'OPERATION_NOT_FOUND'}]){
+ const adapter=createConfiguredAdapter(parseConfig(env),{fetchImpl:async()=>({status:200,json:async()=>value})});const result=await adapter.call({command:'read_receipt',payload_json:'{"operationId":"SYNTHETIC"}'});
+ if(!value.ok)assert.equal(result.code,value.code);else assert.equal(result.ok,value.kind==='reschedule'&&value.receipt.resourceId==='R1');
+ }
+});
