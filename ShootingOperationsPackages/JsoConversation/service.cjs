@@ -5,7 +5,7 @@ const fail=(code,extra={})=>({ok:false,code,...extra});
 // Exact order/session label + numeric minutes; conditions/quotes/composite actions fall through.
 function parseShift(text){const match=/^把(.+?)(?:的场次|场次)?(延后|推迟|提前)([1-9][0-9]{0,3})分钟[。！!]?$/u.exec(text.trim());if(!match)return null;const name=match[1];if(/[“”"「」\n]|如果|但是|但|不要|取消|并且|然后|同时/u.test(name))return null;return {name,minutes:Number(match[3])*(match[2]==='提前'?-1:1)};}
 class ConversationService{
- constructor({journalPath,tool,ownerAuthorize,ownerCancel,verifyOwner,refreshChart,clock=()=>new Date()}){this.journal=new Journal(journalPath);this.tool=tool;this.ownerAuthorize=ownerAuthorize;this.ownerCancel=ownerCancel;this.verifyOwner=verifyOwner;this.refreshChart=refreshChart;this.clock=clock;this.inflight=new Map();this.previewVersions=new Map();this.conversationVersions=new Map();}
+ constructor({journalPath,journalGuard,tool,ownerAuthorize,ownerCancel,verifyOwner,refreshChart,clock=()=>new Date()}){this.journal=new Journal(journalPath,journalGuard);this.tool=tool;this.ownerAuthorize=ownerAuthorize;this.ownerCancel=ownerCancel;this.verifyOwner=verifyOwner;this.refreshChart=refreshChart;this.clock=clock;this.inflight=new Map();}
  // Only the trusted native input owner calls this. Never expose capture over model IPC/HTTP.
  captureNative(source){return this.journal.source(source);}
  async call(action,payload){const r=await this.tool({command:action,payload_json:JSON.stringify(payload)});const value=r?.result??r;if(typeof value?.ok!=='boolean')throw Error('SERVICE_RESULT_INVALID');return value;}
@@ -17,7 +17,7 @@ class ConversationService{
   if(source.cancelled)return fail('CANCELLED');
   const text=source.text.trim().replace(/[。！!]$/u,'');
   const plans=Object.values(this.journal.data.plans).filter(p=>p.conversationId===source.conversationId&&!p.closed);
-  if(['取消','不要','不用了','不同意'].includes(text)){this.invalidateConversation(source.conversationId);for(const prior of Object.values(this.journal.data.sources))if(prior.conversationId===source.conversationId&&prior.sequence<source.sequence&&!prior.operationId)prior.cancelled=true;this.journal.save();const active=Object.values(this.journal.data.operations).filter(o=>this.journal.data.sources[o.sourceId]?.conversationId===source.conversationId&&!['failed','cancelled','committed'].includes(o.phase));const results=await Promise.all(active.map(o=>this.cancel(o.id)));return {ok:true,cancelled:plans.length+results.filter(r=>r.cancelled).length,reconciliation:results.filter(r=>!r.cancelled)};}
+  if(['取消','不要','不用了','不同意'].includes(text)){this.invalidateConversation(source.conversationId);let cancelledSources=0;for(const prior of Object.values(this.journal.data.sources))if(prior.conversationId===source.conversationId&&prior.sequence<source.sequence&&!prior.operationId&&!prior.cancelled){prior.cancelled=true;if(parseShift(prior.text)||/^再(延后|推迟|提前)[1-9][0-9]{0,3}分钟[。！!]?$/u.test(prior.text.trim()))cancelledSources++;}this.journal.save();const active=Object.values(this.journal.data.operations).filter(o=>this.journal.data.sources[o.sourceId]?.conversationId===source.conversationId&&!['failed','cancelled','committed'].includes(o.phase));const results=[];for(const o of active)results.push(await this.cancel(o.id));return {ok:true,cancelled:cancelledSources+plans.length+results.filter(r=>r.cancelled).length,reconciliation:results.filter(r=>!r.cancelled)};}
   if(['可以','同意','执行吧'].includes(text)){
    if(plans.length!==1)return fail('AMBIGUOUS_CONFIRMATION',{message:plans.length?'请说明确认哪一个方案。':'当前没有待确认方案。'});
    const plan=plans[0];if(!plan.presented)return fail('PROPOSAL_NOT_PRESENTED');
@@ -39,13 +39,13 @@ class ConversationService{
    expectedScheduleRevision:state.revisions.scheduleRevision,expectedProjectionRevision:state.revisions.projectionRevision});
   if(source.cancelled)return fail('CANCELLED');
   if(!proposal.ok)return proposal;
-  return this.execute(this.journal.bind(sourceId,proposal).id);
+  return this.execute(source.operationId||this.journal.bind(sourceId,proposal).id);
  }
  async propose({conversationId,resourceId,scheduleItemId,minutes,messageId=null}){
   const key=JSON.stringify([conversationId,messageId]);
-  const version=(this.previewVersions.get(key)||0)+1;this.previewVersions.set(key,version);
-  const conversationVersion=this.conversationVersions.get(conversationId)||0;this.conversationVersions.set(conversationId,conversationVersion);
-  const superseded=()=>conversationVersion!==(this.conversationVersions.get(conversationId)||0)||(messageId!==null&&version!==this.previewVersions.get(key));
+  const version=(this.journal.data.previewVersions?.[key]||0)+1;(this.journal.data.previewVersions??={})[key]=version;
+  const conversationVersion=this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0;this.journal.save();
+  const superseded=()=>conversationVersion!==(this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0)||(messageId!==null&&version!==this.journal.data.previewVersions?.[key]);
   if(messageId){const previous=Object.values(this.journal.data.plans).filter(p=>p.conversationId===conversationId&&p.messageId===messageId);for(const p of previous){if(!p.closed&&p.proposal.command.scheduleItemId===scheduleItemId&&p.minutes===minutes)return {ok:true,plan:p};p.closed=true;}this.journal.save();}
   const state=await this.read(resourceId);if(superseded())return fail('PROPOSAL_SUPERSEDED');if(!state.ok)return state;
   const proposal=await this.call('preview_shift',{operationId:'JSOCHAT-'+randomUUID(),scheduleItemId,resourceId,minutes,...{expectedScheduleRevision:state.revisions.scheduleRevision,expectedProjectionRevision:state.revisions.projectionRevision}});
@@ -58,25 +58,30 @@ class ConversationService{
   const plan={id:randomUUID(),conversationId,messageId,minutes,presentation,proposal,presented:false,closed:false,expiresAt:this.clock().getTime()+300000};this.journal.data.plans[plan.id]=plan;this.journal.save();return {ok:true,plan};
  }
  markPresented(planId,conversationId,commandDigest){const p=this.journal.data.plans[planId];if(!p||p.conversationId!==conversationId||p.proposal.commandDigest!==commandDigest)throw Error('PRESENTATION_MISMATCH');if(p.closed)throw Error('PROPOSAL_CLOSED');if(!p.presented){p.presented=true;p.presentedSequence=this.journal.tick();}this.journal.save();}
- invalidateMessage(conversationId,messageId){const key=JSON.stringify([conversationId,messageId]);this.previewVersions.set(key,(this.previewVersions.get(key)||0)+1);for(const p of Object.values(this.journal.data.plans))if(p.conversationId===conversationId&&p.messageId===messageId)p.closed=true;this.journal.save();}
- invalidateConversation(conversationId){this.conversationVersions.set(conversationId,(this.conversationVersions.get(conversationId)||0)+1);for(const p of Object.values(this.journal.data.plans))if(p.conversationId===conversationId)p.closed=true;this.journal.save();}
+ invalidateMessage(conversationId,messageId){const key=JSON.stringify([conversationId,messageId]);(this.journal.data.previewVersions??={})[key]=(this.journal.data.previewVersions?.[key]||0)+1;for(const p of Object.values(this.journal.data.plans))if(p.conversationId===conversationId&&p.messageId===messageId)p.closed=true;this.journal.save();}
+ invalidateConversation(conversationId){(this.journal.data.conversationVersions??={})[JSON.stringify(conversationId)]=(this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0)+1;for(const p of Object.values(this.journal.data.plans))if(p.conversationId===conversationId)p.closed=true;this.journal.save();}
  async cancel(operationId){const r=this.journal.data.operations[operationId];if(!r)return fail('OPERATION_NOT_FOUND');if(['dispatching','unknown','committed'].includes(r.phase))return this.reconcile(r);r.cancelled=true;r.phase='cancelled';this.journal.save();await this.ownerCancel?.(r);return {ok:true,cancelled:true};}
  execute(id){if(this.inflight.has(id))return this.inflight.get(id);const p=this.executeOnce(id).finally(()=>this.inflight.delete(id));this.inflight.set(id,p);return p;}
- async reconcile(r){const found=await this.call('read_receipt',{operationId:r.id});if(found.ok&&found.receipt?.operationId===r.id){r.phase='committed';r.receipt=found.receipt;this.journal.save();return this.finish(r);}return fail('RECONCILIATION_REQUIRED',{operationId:r.id,receiptCode:found.code});}
- async recover(){const results=[];for(const r of Object.values(this.journal.data.operations)){if(['dispatching','unknown'].includes(r.phase))results.push(await this.reconcile(r));}return results;}
+ async reconcile(r){const found=await this.call('read_receipt',{operationId:r.id});if(r.phase==='committed')return this.finish(r);if(found.ok&&found.receipt?.operationId===r.id){r.phase='committed';r.receipt=found.receipt;this.journal.save();return this.finish(r);}return fail('RECONCILIATION_REQUIRED',{operationId:r.id,receiptCode:found.code});}
+ async recover(){const results=[];for(const r of Object.values(this.journal.data.operations)){if(['authorizing','dispatching','unknown'].includes(r.phase))results.push(await this.reconcile(r));}return results;}
  async finish(r){let chart={ok:false,code:'REFRESH_NOT_ATTEMPTED'};try{const state=await this.read(r.proposal.command.resourceId);if(state.ok)chart=await this.refreshChart(state);}catch{}return {ok:true,committed:true,operationId:r.id,receipt:r.receipt,chart};}
  async executeOnce(id){
   const r=this.journal.data.operations[id];if(!r)return fail('OPERATION_NOT_FOUND');
   if(r.phase==='committed')return this.finish(r);
   if(r.phase==='failed')return fail(r.failure,{operationId:r.id});
-  if(['dispatching','unknown'].includes(r.phase))return this.reconcile(r);
+  if(['authorizing','dispatching','unknown'].includes(r.phase))return this.reconcile(r);
   if(r.cancelled||r.phase==='cancelled')return fail('CANCELLED');
   if(!await this.verifyOwner())return fail('OWNER_SESSION_REQUIRED');
-  let admitted;try{admitted=await this.ownerAuthorize(r);}catch{return fail('AUTHORIZATION_UNAVAILABLE');}
+  // Claim before yielding: another process may cancel, but cannot authorize/dispatch twice.
+  if(r.phase!=='prepared'||r.cancelled)return r.cancelled?fail('CANCELLED'):this.reconcile(r);
+  r.phase='authorizing';this.journal.save();
+  let admitted;try{admitted=await this.ownerAuthorize(r);}catch{return fail('RECONCILIATION_REQUIRED',{operationId:r.id});}
   if(r.cancelled)return fail('CANCELLED');
-  if(!admitted.ok){if(admitted.code==='RECONCILIATION_REQUIRED')return this.reconcile(r);return admitted;}
+  if(!admitted.ok){if(admitted.code==='RECONCILIATION_REQUIRED')return this.reconcile(r);r.phase='failed';r.failure=admitted.code;this.journal.save();return admitted;}
   r.phase='dispatching';this.journal.save();
   let result;try{result=await this.call('reschedule',r.proposal.command);}catch{result=fail('RESULT_UNKNOWN');}
+  // Another process may have recovered the receipt while this response was pending.
+  if(r.phase==='committed')return this.finish(r);
   if(result.ok&&result.receipt?.operationId!==r.id)result=fail('RESULT_UNKNOWN');
   if(result.ok){r.phase='committed';r.receipt=result.receipt;this.journal.save();return this.finish(r);}
   if(!result.code)result=fail('RESULT_UNKNOWN');

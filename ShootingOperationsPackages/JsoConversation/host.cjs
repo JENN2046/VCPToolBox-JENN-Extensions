@@ -4,11 +4,11 @@ const {createAgentAdapter}=require('../JsoAgentAdapter/index.cjs');
 const {createConfiguredAdapter}=require('../JsoAgentAdapter/config.cjs');
 // Trusted composition only, never exported as a model/stdin command. Reuses the host's
 // ApprovalReceiptAuthority instance and existing authenticated session/delegation adapter.
-function createConversationHost({config,authority,readNativeEvent,delegate,cancelDelegate,sessionCurrent,journalPath,refreshChart,fetchImpl=fetch,clock}){
+function createConversationHost({config,authority,readNativeEvent,delegate,cancelDelegate,sessionCurrent,journalPath,journalGuard,refreshChart,fetchImpl=fetch,clock}){
  if(!authority||typeof readNativeEvent!=='function'||typeof delegate!=='function'||typeof cancelDelegate!=='function'||typeof sessionCurrent!=='function')throw Error('TRUSTED_CONVERSATION_INTERFACE_REQUIRED');
  const contexts=new Map(),agent=createAgentAdapter({endpoint:config.endpoint,token:config.token,fetchImpl});
  const safe=createConfiguredAdapter(config,{fetchImpl});
- const service=new ConversationService({journalPath,clock,
+ const service=new ConversationService({journalPath,journalGuard,clock,
   tool:args=>agent.call(args),verifyOwner:async()=>true,refreshChart,
   ownerCancel:operation=>cancelDelegate({source:service.journal.data.sources[operation.sourceId],command:operation.proposal.command}),
   ownerAuthorize:async operation=>{
@@ -20,6 +20,7 @@ function createConversationHost({config,authority,readNativeEvent,delegate,cance
    const context=contexts.get(operation.sourceId),event=readNativeEvent(context);
    const source=service.journal.data.sources[operation.sourceId];
    if(!event||!source||event.messageId!==source.id||event.text!==source.text||event.conversationId!==source.conversationId||!authority.isHuman(context)||!await sessionCurrent(context,operation.proposal.command.resourceId))return {ok:false,code:'TRUSTED_SESSION_REQUIRED'};
+   if(operation.cancelled)return {ok:false,code:'CANCELLED'};
    const payload={command:'reschedule',requestId:operation.id,sourceId:source.id,conversationId:source.conversationId,schedule:operation.proposal.command};
    const record=authority.snapshot('JennShootingOperations',payload,{requiresApproval:true,matchedRule:'JennShootingOperations:reschedule',matchedCommand:'reschedule'},{enabled:true});
    const intent=authority.attestIntent(record,{decision:'approve',hostApprovalRequestId:source.id,targetDigest:record.argsDigest},context);
@@ -33,6 +34,7 @@ function createConversationHost({config,authority,readNativeEvent,delegate,cance
   }
  });
  return {
+  reloadJournal:()=>service.journal.reload(),
   call:args=>safe.call(args),
   async propose({conversationId,messageId,scheduleItemId,resourceId,minutes}){
    if(!config.resources.includes(resourceId))return {ok:false,code:'FORBIDDEN'};

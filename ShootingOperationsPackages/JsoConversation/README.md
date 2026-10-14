@@ -11,3 +11,7 @@ ToolBox 必须有最小宿主修改：server.js 路由注册、Plugin.js 每调�
 最终派发前按当前资源/分钟配置重验持久提案及prepared操作；超限需重新提案，不修改已展示命令。unknown/dispatching仍只查原ID回执。配置层只接收资源可证明且在范围内的reschedule回执，其余回执失败关闭。
 
 先前人工rev8/11验收属于修复前提交；本轮合成回归不构成新版人工或模型验收。
+
+跨进程 journal 锁只保护同步状态转换，网络等待期间释放，继续时持锁重读。既有 journal 保存提案版本和 authorizing 操作认领，避免进程间旧快照覆盖与重复派发；没有新增存储服务。派发前可记录取消；dispatching/unknown 及已提交操作只查询原回执，不声称取消，也不重新派发。authorizing 进程丢失后同样先核对原回执，不盲目重试。进程遗留锁仍不自动删除。
+
+跨进程回归：`JSO_TOOLBOX_SOURCE=/path/to/VCPToolBox node ShootingOperationsPackages/JsoConversation/stdio.test.cjs`。使用真实宿主 authority 模块、临时 journal 和合成上游，不读取运行凭据或业务库。
