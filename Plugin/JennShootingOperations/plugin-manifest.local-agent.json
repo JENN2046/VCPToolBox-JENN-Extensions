@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.0.0",
   "name": "JennShootingOperations",
-  "displayName": "JSO Local Agent Candidate",
+  "displayName": "JSO Configurable Conversation Adapter",
   "version": "0.2.0-local",
   "pluginType": "synchronous",
   "entryPoint": {
@@ -14,7 +14,13 @@
   },
   "configSchema": {
     "JSO_LOCAL_AGENT_ENDPOINT": "string",
-    "JSO_LOCAL_AGENT_TOKEN": "string"
+    "JSO_LOCAL_AGENT_TOKEN": "string",
+    "JSO_RESOURCE_IDS": "string",
+    "JSO_CALL_POLICY": "string",
+    "JSO_MAX_SHIFT_MINUTES": "integer",
+    "JSO_JOURNAL_PATH": "string",
+    "JSO_ASSISTANT_SUBJECT_ID": "string",
+    "JSO_DEFAULT_RESOURCE_ID": "string"
   },
   "capabilities": {
     "invocationCommands": [
@@ -24,16 +30,16 @@
       },
       {
         "commandIdentifier": "preview_shift",
-        "description": "Validate a same-day shift in numeric minutes; no write."
-      },
-      {
-        "commandIdentifier": "reschedule",
-        "description": "Execute an exact delegated command; never self-authorize or automatically retry."
+        "description": "Read-only same-day numeric shift preview. To suggest it in chat, output one fenced vcp-tool-proposal JSON block: {\"tool\":\"JennShootingOperations\",\"payload\":{\"scheduleItemId\":\"<authoritative id>\",\"minutes\":12}}. The host re-reads impact and shows ordinary text; a later native confirmation is required. Never add approval/role/credential fields."
       },
       {
         "commandIdentifier": "read_receipt",
         "description": "Reconcile the original operationId."
       }
     ]
+  },
+  "description": "Configured JSO tools. Native conversation uses the existing authenticated application identity via the host stdio context; model fields never authorize writes.",
+  "nativeConversation": {
+    "protocol": "trusted-conversation-v1"
   }
 }
