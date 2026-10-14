@@ -14,10 +14,26 @@ class ConversationService{
   const source=this.journal.data.sources[sourceId];if(!source)return fail('TRUSTED_SOURCE_REQUIRED');
   if(!await this.verifyOwner())return fail('OWNER_SESSION_REQUIRED');
   if(source.operationId)return this.execute(source.operationId);
+  if(source.cancelState)return source.cancelState.result||fail('RECONCILIATION_REQUIRED',{operationIds:source.cancelState.operationIds});
   if(source.cancelled)return fail('CANCELLED');
   const text=source.text.trim().replace(/[。！!]$/u,'');
   const plans=Object.values(this.journal.data.plans).filter(p=>p.conversationId===source.conversationId&&!p.closed);
-  if(['取消','不要','不用了','不同意'].includes(text)){this.invalidateConversation(source.conversationId);let cancelledSources=0;for(const prior of Object.values(this.journal.data.sources))if(prior.conversationId===source.conversationId&&prior.sequence<source.sequence&&!prior.operationId&&!prior.cancelled){prior.cancelled=true;if(parseShift(prior.text)||/^再(延后|推迟|提前)[1-9][0-9]{0,3}分钟[。！!]?$/u.test(prior.text.trim()))cancelledSources++;}this.journal.save();const active=Object.values(this.journal.data.operations).filter(o=>this.journal.data.sources[o.sourceId]?.conversationId===source.conversationId&&!['failed','cancelled','committed'].includes(o.phase));const results=[];for(const o of active)results.push(await this.cancel(o.id));return {ok:true,cancelled:cancelledSources+plans.length+results.filter(r=>r.cancelled).length,reconciliation:results.filter(r=>!r.cancelled)};}
+  if(['取消','不要','不用了','不同意'].includes(text)){
+   // Freeze this source's generation before any await. Replays never cancel newer work.
+   const key=JSON.stringify(source.conversationId),cutoff=source.sequence;
+   const oldPlans=plans.filter(p=>(p.sequence??p.presentedSequence??0)<cutoff);
+   (this.journal.data.cancelledThrough??={})[key]=Math.max(this.journal.data.cancelledThrough?.[key]||0,cutoff);
+   for(const p of oldPlans)p.closed=true;
+   let cancelledSources=0;
+   for(const prior of Object.values(this.journal.data.sources))if(prior.conversationId===source.conversationId&&prior.sequence<cutoff&&!prior.operationId&&!prior.cancelled){prior.cancelled=true;if(parseShift(prior.text)||/^再(延后|推迟|提前)[1-9][0-9]{0,3}分钟[。！!]?$/u.test(prior.text.trim()))cancelledSources++;}
+   const active=Object.values(this.journal.data.operations).filter(o=>{const origin=this.journal.data.sources[o.sourceId];return origin?.conversationId===source.conversationId&&origin.sequence<cutoff&&!['failed','cancelled','committed'].includes(o.phase);});
+   // Cancel every pre-dispatch target in the same short transaction, before revocation I/O.
+   for(const o of active)if(!['dispatching','unknown','committed'].includes(o.phase)){o.cancelled=true;o.phase='cancelled';}
+   source.cancelState={operationIds:active.map(o=>o.id)};this.journal.save();
+   const results=[];for(const id of source.cancelState.operationIds)results.push(await this.cancel(id));
+   source.cancelState.result={ok:true,cancelled:cancelledSources+oldPlans.length+results.filter(r=>r.cancelled).length,reconciliation:results.filter(r=>!r.cancelled)};
+   this.journal.save();return source.cancelState.result;
+  }
   if(['可以','同意','执行吧'].includes(text)){
    if(plans.length!==1)return fail('AMBIGUOUS_CONFIRMATION',{message:plans.length?'请说明确认哪一个方案。':'当前没有待确认方案。'});
    const plan=plans[0];if(!plan.presented)return fail('PROPOSAL_NOT_PRESENTED');
@@ -42,10 +58,10 @@ class ConversationService{
   return this.execute(source.operationId||this.journal.bind(sourceId,proposal).id);
  }
  async propose({conversationId,resourceId,scheduleItemId,minutes,messageId=null}){
-  const key=JSON.stringify([conversationId,messageId]);
+  const key=JSON.stringify([conversationId,messageId]),sequence=this.journal.tick();
   const version=(this.journal.data.previewVersions?.[key]||0)+1;(this.journal.data.previewVersions??={})[key]=version;
   const conversationVersion=this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0;this.journal.save();
-  const superseded=()=>conversationVersion!==(this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0)||(messageId!==null&&version!==this.journal.data.previewVersions?.[key]);
+  const superseded=()=>sequence<(this.journal.data.cancelledThrough?.[JSON.stringify(conversationId)]||0)||conversationVersion!==(this.journal.data.conversationVersions?.[JSON.stringify(conversationId)]||0)||(messageId!==null&&version!==this.journal.data.previewVersions?.[key]);
   if(messageId){const previous=Object.values(this.journal.data.plans).filter(p=>p.conversationId===conversationId&&p.messageId===messageId);for(const p of previous){if(!p.closed&&p.proposal.command.scheduleItemId===scheduleItemId&&p.minutes===minutes)return {ok:true,plan:p};p.closed=true;}this.journal.save();}
   const state=await this.read(resourceId);if(superseded())return fail('PROPOSAL_SUPERSEDED');if(!state.ok)return state;
   const proposal=await this.call('preview_shift',{operationId:'JSOCHAT-'+randomUUID(),scheduleItemId,resourceId,minutes,...{expectedScheduleRevision:state.revisions.scheduleRevision,expectedProjectionRevision:state.revisions.projectionRevision}});
@@ -55,7 +71,7 @@ class ConversationService{
   const names=state.orders.filter(o=>state.progress.find(p=>p.scheduleItemId===scheduleItemId)?.requestIds.includes(o.id)).map(o=>o.name).join('、');
   const time=v=>new Date(v).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
   const presentation=`排期调整方案：${names||scheduleItemId} · ${state.resources.find(r=>r.resourceId===resourceId)?.displayName||resourceId}\n北京时间：${time(session.plannedStart)} — ${time(session.plannedEnd)} → ${time(proposal.command.plannedStart)} — ${time(proposal.command.plannedEnd)}\n${minutes>0?'延后':'提前'} ${Math.abs(minutes)} 分钟；仅调整此场次，其他场次不变，不发送通知。\n方案有效期5分钟。可回复“可以”执行，回复“取消”关闭，或说明新的调整。`;
-  const plan={id:randomUUID(),conversationId,messageId,minutes,presentation,proposal,presented:false,closed:false,expiresAt:this.clock().getTime()+300000};this.journal.data.plans[plan.id]=plan;this.journal.save();return {ok:true,plan};
+  const plan={id:randomUUID(),sequence,conversationId,messageId,minutes,presentation,proposal,presented:false,closed:false,expiresAt:this.clock().getTime()+300000};this.journal.data.plans[plan.id]=plan;this.journal.save();return {ok:true,plan};
  }
  markPresented(planId,conversationId,commandDigest){const p=this.journal.data.plans[planId];if(!p||p.conversationId!==conversationId||p.proposal.commandDigest!==commandDigest)throw Error('PRESENTATION_MISMATCH');if(p.closed)throw Error('PROPOSAL_CLOSED');if(!p.presented){p.presented=true;p.presentedSequence=this.journal.tick();}this.journal.save();}
  invalidateMessage(conversationId,messageId){const key=JSON.stringify([conversationId,messageId]);(this.journal.data.previewVersions??={})[key]=(this.journal.data.previewVersions?.[key]||0)+1;for(const p of Object.values(this.journal.data.plans))if(p.conversationId===conversationId&&p.messageId===messageId)p.closed=true;this.journal.save();}

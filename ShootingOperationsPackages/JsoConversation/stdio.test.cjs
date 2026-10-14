@@ -40,3 +40,30 @@ test('after dispatch claim cancellation reconciles and never reports cancellatio
  const h=setup(t);await h.prepare('native-direct','把A延后7分钟');const b=h.pause('reschedule'),pending=h.execute('native-direct');await b.entered;
  const cancelled=await h.cancel();assert.equal(cancelled.cancelled,0);assert.equal(cancelled.reconciliation[0].code,'RECONCILIATION_REQUIRED');assert.equal((await h.execute('native-direct')).code,'RECONCILIATION_REQUIRED');b.release();assert.equal((await pending).committed,true);assert.equal((await h.execute('native-direct')).committed,true);assert.equal(h.writes(),1);assert.equal(h.delegations(),1);
 });
+async function propose(h,messageId){return h.call({nativeAction:'propose',payload:{conversationId:'C',messageId,scheduleItemId:'A',minutes:7}});}
+async function confirm(h,plan){
+ const shown=await h.call({nativeAction:'presented',payload:{conversationId:'C',planId:plan.id,text:plan.presentation}});assert.equal(shown.ok,true);
+ await h.call({nativeAction:'prepare',payload:{messageId:'native-confirm-new',conversationId:'C',text:'可以',observedSequence:shown.sequence}});
+ return h.execute('native-confirm-new');
+}
+test('completed cancel replay preserves a later presented proposal across processes',options,async t=>{
+ const h=setup(t);await propose(h,'old');const original=await h.cancel();assert.equal(original.cancelled,1);
+ const next=await propose(h,'new');const shown=await h.call({nativeAction:'presented',payload:{conversationId:'C',planId:next.plan.id,text:next.plan.presentation}});assert.equal(shown.ok,true);
+ const replay=await h.execute('native-cancel');assert.equal(replay.cancelled,original.cancelled);assert.deepEqual(replay.reconciliation,original.reconciliation);
+ assert.equal((await confirm(h,next.plan)).committed,true);assert.equal(h.writes(),1);
+});
+test('first delayed cancellation does not invalidate a later in-flight proposal generation',options,async t=>{
+ const h=setup(t);await propose(h,'old');await h.prepare('native-cancel','取消');const b=h.pause('preview_shift'),next=propose(h,'new');await b.entered;
+ assert.equal((await h.execute('native-cancel')).cancelled,1);b.release();const result=await next;assert.equal(result.ok,true);assert.equal((await confirm(h,result.plan)).committed,true);assert.equal(h.writes(),1);
+});
+test('first delayed cancellation does not cancel a later direct source',options,async t=>{
+ const h=setup(t);await propose(h,'old');await h.prepare('native-cancel','取消');await h.prepare('native-new','把A延后7分钟');const b=h.pause('read_state'),pending=h.execute('native-new');await b.entered;
+ assert.equal((await h.execute('native-cancel')).cancelled,1);b.release();assert.equal((await pending).committed,true);assert.equal(h.writes(),1);
+});
+test('all frozen pre-dispatch targets are cancelled before the first revocation await',options,async t=>{
+ const h=setup(t);await h.prepare('native-old-one','把A延后7分钟');const one=h.pause('owner-delegation'),pendingOne=h.execute('native-old-one');await one.entered;
+ await h.prepare('native-old-two','把A延后7分钟');const two=h.pause('owner-delegation'),pendingTwo=h.execute('native-old-two');await two.entered;
+ const revoke=h.pause('owner-delegation'),cancelling=h.cancel();await revoke.entered;
+ two.release();assert.equal((await pendingTwo).code,'CANCELLED');one.release();assert.equal((await pendingOne).code,'CANCELLED');assert.equal(h.writes(),0);
+ revoke.release();assert.equal((await cancelling).cancelled,2);assert.equal(h.writes(),0);
+});
