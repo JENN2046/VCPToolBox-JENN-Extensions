@@ -15,7 +15,7 @@ async function runNative(args,config,env,invocation){
  let principal;
  async function verify(){const p=await ownerRequest('/api/v2/agent/owner-session');if(!p.ok||p.role!=='administrator'||!p.resourceIds?.includes(resource)||principal&&p.subjectId!==principal.subjectId)return false;principal=p;return true;}
  if(!await verify())return {ok:false,code:'APPLICATION_SESSION_REQUIRED'};
- const file=env.JSO_JOURNAL_PATH+'.'+createHash('sha256').update(principal.subjectId).digest('hex').slice(0,24)+'.json';fs.mkdirSync(path.dirname(file),{recursive:true});
+ const file=env.JSO_JOURNAL_PATH+'.'+createHash('sha256').update(principal.subjectId+(invocation.namespace?':'+invocation.namespace:'')).digest('hex').slice(0,24)+'.json';fs.mkdirSync(path.dirname(file),{recursive:true});
  lock=file+'.lock';try{await acquire();}catch{return {ok:false,code:'JOURNAL_BUSY_RECONCILE_REQUIRED'};}
  try{
   const {ApprovalReceiptAuthority}=require(path.join(env.PROJECT_BASE_PATH,'modules/approvalReceiptAuthority'));

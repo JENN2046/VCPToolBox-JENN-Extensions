@@ -79,7 +79,10 @@ class ConversationService{
  async cancel(operationId){const r=this.journal.data.operations[operationId];if(!r)return fail('OPERATION_NOT_FOUND');if(['dispatching','unknown','committed'].includes(r.phase))return this.reconcile(r);r.cancelled=true;r.phase='cancelled';this.journal.save();await this.ownerCancel?.(r);return {ok:true,cancelled:true};}
  execute(id){if(this.inflight.has(id))return this.inflight.get(id);const p=this.executeOnce(id).finally(()=>this.inflight.delete(id));this.inflight.set(id,p);return p;}
  async reconcile(r){const found=await this.call('read_receipt',{operationId:r.id});if(r.phase==='committed')return this.finish(r);if(found.ok&&found.receipt?.operationId===r.id){r.phase='committed';r.receipt=found.receipt;this.journal.save();return this.finish(r);}return fail('RECONCILIATION_REQUIRED',{operationId:r.id,receiptCode:found.code});}
- async recover(){const results=[];for(const r of Object.values(this.journal.data.operations)){if(['authorizing','dispatching','unknown'].includes(r.phase))results.push(await this.reconcile(r));}return results;}
+ async recover(){const results=[],returned=new Set();for(const r of Object.values(this.journal.data.operations)){if(['authorizing','dispatching','unknown'].includes(r.phase)){results.push(await this.reconcile(r));returned.add(r.id);}}
+  // A committed reply may be lost on disconnect. Re-project saved receipts, never dispatch.
+  const latest=new Map();for(const r of Object.values(this.journal.data.operations))if(r.phase==='committed')latest.set(r.proposal.command.resourceId,r);
+  for(const r of latest.values())if(!returned.has(r.id))results.push(await this.finish(r));return results;}
  async finish(r){let chart={ok:false,code:'REFRESH_NOT_ATTEMPTED'};try{const state=await this.read(r.proposal.command.resourceId);if(state.ok)chart=await this.refreshChart(state);}catch{}return {ok:true,committed:true,operationId:r.id,receipt:r.receipt,chart};}
  async executeOnce(id){
   const r=this.journal.data.operations[id];if(!r)return fail('OPERATION_NOT_FOUND');
