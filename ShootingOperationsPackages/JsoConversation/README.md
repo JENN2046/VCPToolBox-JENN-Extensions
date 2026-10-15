@@ -15,3 +15,7 @@ ToolBox 必须有最小宿主修改：server.js 路由注册、Plugin.js 每调�
 跨进程 journal 锁只保护同步状态转换，网络等待期间释放，继续时持锁重读。既有 journal 保存提案版本和 authorizing 操作认领，避免进程间旧快照覆盖与重复派发；没有新增存储服务。派发前可记录取消；dispatching/unknown 及已提交操作只查询原回执，不声称取消，也不重新派发。authorizing 进程丢失后同样先核对原回执，不盲目重试。进程遗留锁仍不自动删除。
 
 跨进程回归：`JSO_TOOLBOX_SOURCE=/path/to/VCPToolBox node ShootingOperationsPackages/JsoConversation/stdio.test.cjs`。使用真实宿主 authority 模块、临时 journal 和合成上游，不读取运行凭据或业务库。
+
+WebSocket适配的宿主context可提供64位十六进制namespace，仅用于把journal限制到该本人及客户端profile；普通模型参数不能设定宿主context。recover会对未知操作按原ID查回执，并对每资源最近一条已提交操作从当前已保存状态重投图表，以覆盖提交成功但网络回包丢失；不重新授权/提交业务。旧连接的输入或展示资格不随journal恢复。
+
+新建图表模板显示北京时间起止时间、排程版本和投影版本，仍是“显式刷新快照”。ReplaceData 只更新数据，不替换既有图表 runtime；此前用旧模板创建的图表需要另行按既有图表操作重新创建，本补丁不自动迁移个人图表。

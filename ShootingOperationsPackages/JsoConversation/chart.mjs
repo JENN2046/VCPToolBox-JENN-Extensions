@@ -10,13 +10,13 @@ export const runtime = `return {
     const d=context.data;
     const root=context.root; root.replaceChildren();
     const title=document.createElement('h2'); title.textContent='JSO · 拍摄进度'; root.append(title);
-    const note=document.createElement('p'); note.textContent='Asia/Shanghai · 最近读取 '+d.observedAt+' · 排程版本 '+d.revisions.scheduleRevision+' · 显式刷新快照'; root.append(note);
+    const note=document.createElement('p'); note.textContent='北京时间（Asia/Shanghai） · 最近读取 '+d.observedAt+' · 排程版本 '+d.revisions.scheduleRevision+' · 投影版本 '+d.revisions.projectionRevision+' · 显式刷新快照'; root.append(note);
     const table=document.createElement('table');
     for(const order of d.orders) {
       const session=d.sessions.find(s=>d.progress.find(p=>p.scheduleItemId===s.scheduleItemId)?.requestIds.includes(order.id));
       const progress=d.progress.find(p=>p.scheduleItemId===session?.scheduleItemId);
       const row=document.createElement('tr');
-      for(const value of [order.name,order.shootingSubtype,session?new Date(session.plannedStart).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'待排期',progress?.runs.at(-1)?.status??'未开始']) {
+      for(const value of [order.name,order.shootingSubtype,session?new Date(session.plannedStart).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})+' — '+new Date(session.plannedEnd).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'待排期',progress?.runs.at(-1)?.status??'未开始']) {
         const cell=document.createElement('td');cell.textContent=value;row.append(cell);
       } table.append(row);
     } root.append(table);context.reportReady?.();context.reportStable?.();
