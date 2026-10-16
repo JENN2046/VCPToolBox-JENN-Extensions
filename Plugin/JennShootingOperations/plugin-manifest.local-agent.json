@@ -30,7 +30,8 @@
       },
       {
         "commandIdentifier": "preview_shift",
-        "description": "Read-only same-day numeric shift preview. To suggest it in chat, output one fenced vcp-tool-proposal JSON block: {\"tool\":\"JennShootingOperations\",\"payload\":{\"scheduleItemId\":\"<authoritative id>\",\"minutes\":12}}. The host re-reads impact and shows ordinary text; a later native confirmation is required. Never add approval/role/credential fields."
+        "description": "Read-only same-day numeric shift preview; does not execute a change. Direct tool invocation uses command preview_shift and payload_json containing all six required fields: operationId (a new unique string), scheduleItemId, resourceId, minutes (integer), expectedScheduleRevision, expectedProjectionRevision. Obtain IDs and both revisions from the latest read_state result; do not guess them. Separately, to present the suggestion in chat, output one fenced vcp-tool-proposal JSON block: {\"tool\":\"JennShootingOperations\",\"payload\":{\"scheduleItemId\":\"<authoritative id>\",\"minutes\":1}}. This two-field chat proposal is NOT the direct preview_shift payload. The host re-reads impact and presents it; a later native confirmation is required. Never add approval/role/credential fields.",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」preview_shift「末」,\npayload_json:「始」{\"operationId\":\"<new unique id>\",\"scheduleItemId\":\"<latest read_state session id>\",\"resourceId\":\"<latest read_state resource id>\",\"minutes\":1,\"expectedScheduleRevision\":2,\"expectedProjectionRevision\":5}「末」\n<<<[END_TOOL_REQUEST]>>>\nThe revision numbers are illustrative; replace them with both revisions returned by the latest read_state."
       },
       {
         "commandIdentifier": "read_receipt",
