@@ -35,8 +35,10 @@ class ConversationService{
    this.journal.save();return source.cancelState.result;
   }
   if(['可以','同意','执行吧'].includes(text)){
-   if(plans.length!==1)return fail('AMBIGUOUS_CONFIRMATION',{message:plans.length?'请说明确认哪一个方案。':'当前没有待确认方案。'});
-   const plan=plans[0];if(!plan.presented)return fail('PROPOSAL_NOT_PRESENTED');
+   const currentPlans=plans.filter(p=>p.expiresAt>this.clock().getTime());
+   if(plans.length&&!currentPlans.length)return fail('PROPOSAL_EXPIRED');
+   if(currentPlans.length!==1)return fail('AMBIGUOUS_CONFIRMATION',{message:plans.length?'请说明确认哪一个方案。':'当前没有待确认方案。'});
+   const plan=currentPlans[0];if(!plan.presented)return fail('PROPOSAL_NOT_PRESENTED');
    if(source.observedSequence!==undefined?source.observedSequence<plan.presentedSequence:source.sequence<=plan.presentedSequence)return fail('CONFIRMATION_PREDATES_PRESENTATION');
    if(plan.expiresAt<=this.clock().getTime())return fail('PROPOSAL_EXPIRED');
    const operation=this.journal.bind(sourceId,plan.proposal);plan.closed=true;this.journal.save();return this.execute(operation.id);
