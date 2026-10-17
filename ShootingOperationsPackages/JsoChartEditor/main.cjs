@@ -10,24 +10,39 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const client=providedClient||createClient({url:config.JSO_CHART_BRIDGE_URL,transportToken:env[config.JSO_CHART_TRANSPORT_TOKEN_ENV],authorization:env[config.JSO_CHART_APPLICATION_AUTHORIZATION_ENV]});
  const root=stateRoot||path.join(app.getPath('userData'),'JSOChartEditor'),file=path.join(root,'pending.json');
  const binding=createHash('sha256').update(config.JSO_CHART_BRIDGE_URL||'injected-isolated-client').digest('hex');
- let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve();
+ let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve(),readFlight=null,needsBootstrap=false;
  const views=new Map(),ports=new Map();
  function persist(value){fs.mkdirSync(root,{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value),{mode:0o600});fs.renameSync(file+'.tmp',file);pending=value;}
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077))throw Error('CHART_JOURNAL_UNSAFE');const saved=JSON.parse(fs.readFileSync(file));if(saved&&saved.binding!==binding)throw Error('CHART_JOURNAL_BINDING_CHANGED');pending=saved;}catch(e){if(e.code!=='ENOENT')throw e;}
  const page=path.resolve(projectBasePath,'../Chartmodules/chart.html');
  function owned(win){try{return !disposed&&!win.isDestroyed()&&new URL(win.webContents.getURL()).protocol==='file:'&&path.resolve(fileURLToPath(win.webContents.getURL()))===page;}catch{return false;}}
  async function tell(record,message){if(!record||!owned(record.win))return;await record.win.webContents.executeJavaScript(`window.__jsoChartEditor?.receive(${JSON.stringify({...message,viewId:record.viewId})})`).catch(()=>{});}
- async function project(state){
+ async function project(state,isCurrent=()=>!disposed){
   if(!state?.ok||!revisions(state.revisions))return;
-  const work=async()=>{if(disposed)return;const manifest=await chartService.readManifest(CHART),prior=await chartService.readData(CHART);
+  const work=async()=>{if(disposed||!isCurrent())return;let manifest,prior;
+   const data={source:'JSO',projectionFormat:2,refreshMode:'authenticated-http-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision]};
+   try{manifest=await chartService.readManifest(CHART);prior=await chartService.readData(CHART);}
+   catch(e){if(!['ENOENT','CHART_NOT_FOUND'].includes(e.code))throw e;if(!isCurrent())return;
+    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return;
+   }
    if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return;
    if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return;
-   const data={source:'JSO',projectionFormat:2,refreshMode:'authenticated-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision]};
+   if(!isCurrent())return;
    await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});
   };
   const next=projectQueue.then(work);projectQueue=next.catch(()=>{});return next;
  }
- async function refresh(){const result=await client.call('snapshot');if(result.ok)await project(result.state);return result;}
+ // One authenticated snapshot route for startup, polling and post-save reads.
+ // After a write, wait out any pre-commit read and then start a fresh read.
+ async function refresh({isCurrent=()=>!disposed,fresh=false}={}){
+  if(fresh&&readFlight)await readFlight;
+  if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
+  if(!readFlight){const flight=client.call('snapshot');readFlight=flight;void flight.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
+  const result=await readFlight;
+  if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
+  if(result.ok)await project(result.state,isCurrent);return result;
+ }
+ const refreshView=(record,fresh=false)=>refresh({fresh,isCurrent:()=>views.get(record.viewId)===record&&owned(record.win)});
  async function locate(viewId){
   for(const win of BrowserWindow.getAllWindows().filter(owned)){
    try{if(await win.webContents.executeJavaScript(`window.__jsoChartEditor?.viewId===${JSON.stringify(viewId)}`))return win;}catch{}
@@ -57,10 +72,10 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const onChange=change=>{if(change?.chartId!==CHART||!['created','source-changed','restored'].includes(change.type))return;const work=upgradeQueue.then(upgrade);upgradeQueue=work.catch(()=>{});};
  async function currentRecord(r){return views.get(r.viewId)===r&&owned(r.win)&&await r.win.webContents.executeJavaScript(`window.__jsoChartEditor?.viewId===${JSON.stringify(r.viewId)}`);}
  async function recover(record){
-  if(!pending){const read=await refresh();await tell(record,{kind:'result',message:read.ok?'已读取 JSO 最新安排。':'暂未取回 JSO 最新安排，当前显示保留。'});return;}
+  if(!pending){const read=await refreshView(record);await tell(record,{kind:'result',message:read.ok?'已读取 JSO 最新安排。':'暂未取回 JSO 最新安排，当前显示保留。'});return;}
   if(saving){await tell(record,{kind:'result',unknown:true,message:'保存仍在处理中，请稍后核对原操作。'});return;}
   const result=await client.call('recover',{operationId:pending.command.operationId,subjectId:pending.command.subjectId});
-  if(result.ok&&result.receipt?.operationId===pending.command.operationId){persist(null);const read=await refresh();await tell(record,{kind:'result',message:read.ok?'原保存已确认，已回读 JSO。':'原保存已确认，暂未取回最新显示。'});}
+  if(result.ok&&result.receipt?.operationId===pending.command.operationId){persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'原保存已确认，已回读 JSO。':'原保存已确认，暂未取回最新显示。'});}
   else await tell(record,{kind:'result',unknown:true,message:'原保存结果仍待核对；未再次提交。'});
  }
  function presentation(result,data){
@@ -82,7 +97,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   let record=views.get(p.viewId);
   if(p.kind==='ready'){
    if(views.size>=16)return;record={viewId:p.viewId,win,generation:0};views.set(p.viewId,record);
-   if(pending)await recover(record);else await refresh();return;
+   if(pending)await recover(record);else await refreshView(record);return;
   }
   if(!record||record.win!==win)return;
   if(p.kind==='cancel'){record.generation++;record.previewId=null;ports.get(win.webContents.id)?.invalidate();return;}
@@ -92,7 +107,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    record.previewId=null;record.generation++;ports.get(win.webContents.id)?.invalidate();const generation=record.generation;
    const result=await client.call('preview',{input:p.input,baseRevisions:p.baseRevisions});
    if(!await currentRecord(record)||generation!==record.generation)return;
-   if(!result.ok){await refresh();await tell(record,{kind:'preview',requestId:p.requestId,ok:false,message:'预览未完成：'+result.code+'。请重新拖动核对。'});return;}
+   if(!result.ok){await refreshView(record);await tell(record,{kind:'preview',requestId:p.requestId,ok:false,message:'预览未完成：'+result.code+'。请重新拖动核对。'});return;}
    const displayedData=await chartService.readData(CHART);
    if(!await currentRecord(record)||generation!==record.generation)return;
    record.previewId=randomUUID();record.presentation=presentation(result,displayedData);record.base={scheduleRevision:result.preview.expectedScheduleRevision,projectionRevision:result.preview.expectedProjectionRevision};
@@ -113,9 +128,9 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    record.previewId=null;
    persist({binding,command});
    const result=await client.call('apply',command);
-   if(result.ok&&result.receipt?.operationId===command.operationId){persist(null);const read=await refresh();await tell(record,{kind:'result',message:read.ok?'已保存到 JSO，并回读最新安排。':'JSO 已确认保存，暂未取回最新显示。'});}
+   if(result.ok&&result.receipt?.operationId===command.operationId){persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'已保存到 JSO，并回读最新安排。':'JSO 已确认保存，暂未取回最新显示。'});}
    else if(result.ok||result.code==='RESULT_UNKNOWN'){await tell(record,{kind:'result',unknown:true,message:'保存结果待核对，未重复提交。请点“核对保存结果”。'});}
-   else{persist(null);await refresh();await tell(record,{kind:'result',message:'未保存：'+(result.code||'RESPONSE_INVALID')+'。已回读 JSO，请重新拖动核对。'});}
+   else{persist(null);await refreshView(record);await tell(record,{kind:'result',message:'未保存：'+(result.code||'RESPONSE_INVALID')+'。请重新拖动核对。'});}
   }catch{await tell(record,{kind:'result',unknown:!!pending,message:pending?'保存结果待核对；未重复提交。':'本次未提交，请稍后重新读取。'});}
   finally{saving=false;record.saving=false;}
  }
@@ -123,8 +138,15 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const created=(_event,win)=>{win.webContents.once('did-finish-load',()=>attach(win));};
  chartService.on('runtime-event',onEvent);chartService.on('change',onChange);app.on('browser-window-created',created);
  for(const win of BrowserWindow.getAllWindows())attach(win);
+ try{await chartService.readManifest(CHART);}catch(e){if(!['ENOENT','CHART_NOT_FOUND'].includes(e.code))throw e;needsBootstrap=true;}
  await upgrade();
- return {shutdown(){disposed=true;chartService.off('runtime-event',onEvent);chartService.off('change',onChange);app.removeListener('browser-window-created',created);for(const port of ports.values())port.dispose();ports.clear();views.clear();},refresh,handle};
+ await refresh();
+ const viewKey=()=>[...views.keys()].sort().join(',');
+ const timer=setInterval(()=>{
+  if(disposed||saving||(!needsBootstrap&&!views.size)||readFlight)return;
+  const key=viewKey();void refresh({isCurrent:()=>!disposed&&key===viewKey()&&(needsBootstrap||!!key)}).catch(()=>{});
+ },5000);timer.unref?.();
+ return {shutdown(){disposed=true;clearInterval(timer);chartService.off('runtime-event',onEvent);chartService.off('change',onChange);app.removeListener('browser-window-created',created);for(const port of ports.values())port.dispose();ports.clear();views.clear();},refresh,handle};
 }
 // SHA256 of the two shipped, read-only JSO templates (legacy and auto-refresh).
 const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80'];

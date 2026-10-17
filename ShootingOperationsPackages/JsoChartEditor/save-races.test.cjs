@@ -6,14 +6,14 @@ const input={scheduleItemId:'S',resourceId:'R',mode:'plan',plannedStart:'2040-01
 function barrier(){let enter,release;const entered=new Promise(r=>enter=r),gate=new Promise(r=>release=r);return {entered,enter,gate,release};}
 async function fixture(t,gateKind){
  const {runtime}=await import('./runtime.mjs');const targetHash=createHash('sha256').update(runtime).digest('hex'),root=fs.mkdtempSync(path.join(os.tmpdir(),'jso-save-race-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- const projectBasePath=path.resolve(__dirname,'../../../chat-current/VCPDistributedServer');let displayed={},destroyed=false,blockRead=false;const gate=barrier(),calls=[];
+ const projectBasePath=path.resolve(process.env.JSO_CHART_TEST_CHAT_ROOT||path.resolve(__dirname,'../../../chat-http-baseline'),'VCPDistributedServer');let displayed={},destroyed=false,blockRead=false;const gate=barrier(),calls=[];
  const wc=new EventEmitter();wc.id=1;wc.getURL=()=>require('node:url').pathToFileURL(path.resolve(projectBasePath,'../Chartmodules/chart.html')).href;
  wc.executeJavaScript=async code=>{
   if(code.includes('?.proof(')&&gateKind==='proof'){gate.enter();await gate.gate;}
   return vm.runInNewContext(code,{window:{__jsoChartEditor:{viewId,receive:m=>{displayed=m;},proof:()=>({eligible:true,text:displayed.previewId,conversationId:viewId})}},document:{querySelector:()=>({textContent:displayed.presentation})}});
  };
  const win={webContents:wc,isDestroyed:()=>destroyed,isFocused:()=>true};
- const service=new EventEmitter();service.getSource=async()=>({hash:targetHash});service.readData=async()=>{if(gateKind==='read'&&blockRead){gate.enter();await gate.gate;}return {revisions:{scheduleRevision:1,projectionRevision:1}};};
+ const service=new EventEmitter();service.readManifest=async()=>({dataRevision:1});service.getSource=async()=>({hash:targetHash});service.readData=async()=>{if(gateKind==='read'&&blockRead){gate.enter();await gate.gate;}return {revisions:{scheduleRevision:1,projectionRevision:1}};};
  const client={call:async(action,body)=>{if(action==='snapshot')return {ok:false};if(action==='preview')return {ok:true,subjectId:'owner',previewDigest:'sha256:'+'a'.repeat(64),preview:{input:body.input,expectedScheduleRevision:1,expectedProjectionRevision:1,changes:[],warnings:[],unresolved:[],canApply:true}};if(action==='apply'){calls.push(body);return {ok:true,receipt:{operationId:body.operationId}};}throw Error('unexpected '+action);}};
  const app=new EventEmitter();const editor=await createEditor({chartService:service,projectBasePath,config:{},app,BrowserWindow:{getAllWindows:()=>[win]},client,stateRoot:root});t.after(()=>editor.shutdown());
  const send=p=>editor.handle({chartId:'jso-local-candidate',name:'jso-editor',payload:{viewId,...p}});
