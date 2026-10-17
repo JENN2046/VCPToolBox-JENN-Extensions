@@ -1,0 +1,7 @@
+{
+  "manifestVersion":"1.0.0","name":"JsoChartBridge","displayName":"JSO 图表编辑接口",
+  "version":"0.1.0-local","pluginType":"service","hasApiRoutes":true,
+  "entryPoint":{"type":"nodejs","script":"service.cjs"},"communication":{"protocol":"direct"},
+  "description":"使用当前 JSO 管理员身份转接现有排班预览、保存与回读；不提供模型写工具。",
+  "configSchema":{"JSO_LOCAL_AGENT_ENDPOINT":"string","JSO_RESOURCE_IDS":"string"},"capabilities":{}
+}

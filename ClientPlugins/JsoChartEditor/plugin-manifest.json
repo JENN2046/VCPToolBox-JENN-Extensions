@@ -1,0 +1,7 @@
+{
+ "name":"JsoChartEditor","displayName":"JSO 排班拖拽保存","version":"0.1.0-local",
+ "pluginType":"service","communication":{"protocol":"direct"},
+ "entryPoint":{"type":"nodejs","script":"service.cjs"},"capabilities":{},
+ "configSchema":{"JSO_CHART_BRIDGE_URL":"string","JSO_CHART_TRANSPORT_TOKEN_ENV":"string","JSO_CHART_APPLICATION_AUTHORIZATION_ENV":"string"},
+ "description":"VChart 图表中的本地预览与一次保存，沿用 JSO 管理员身份和既有业务接口。"
+}
