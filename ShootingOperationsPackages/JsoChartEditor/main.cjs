@@ -24,12 +24,12 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    const data={source:'JSO',projectionFormat:2,refreshMode:'authenticated-http-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision]};
    try{manifest=await chartService.readManifest(CHART);prior=await chartService.readData(CHART);}
    catch(e){if(!['ENOENT','CHART_NOT_FOUND'].includes(e.code))throw e;if(!isCurrent())return;
-    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return;
+    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return true;
    }
-   if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return;
-   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return;
+   if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return true;
+   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return true;
    if(!isCurrent())return;
-   await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});
+   await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});return true;
   };
   const next=projectQueue.then(work);projectQueue=next.catch(()=>{});return next;
  }
@@ -43,12 +43,12 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   try{
    result=await flight.promise;
    if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-   if(result.ok)await project(result.state,isCurrent);
+   if(result.ok&&await project(result.state,isCurrent))flight.projected=true;
    if(isCurrent()&&sequence===readSequence)readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
   }catch{
    result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
    if(isCurrent()){
-    if(sequence===readSequence)readStatus={...readStatus,status:'unavailable'};
+    if(sequence===readSequence&&!flight.projected)readStatus={...readStatus,status:'unavailable'};
    }
   }
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};

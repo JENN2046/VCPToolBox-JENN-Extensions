@@ -7,17 +7,17 @@ const state={ok:true,revisions:{scheduleRevision:1,projectionRevision:2},orders:
 async function host(t,oldRuntime=false){
  const {runtime}=await import('./runtime.mjs'),root=fs.mkdtempSync(path.join(os.tmpdir(),'jso-read-status-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const projectBasePath=path.resolve(process.env.JSO_CHART_TEST_CHAT_ROOT||path.resolve(__dirname,'../../../chat-http-baseline'),'VCPDistributedServer');
- const events=[],calls=[];let response={ok:true,state},destroyed=false,replacements=0,upgrades=0,projectionGate=null;
+ const events=[],calls=[];let response={ok:true,state},destroyed=false,replacements=0,upgrades=0,projectionGate=null,dataRead=0,failDataReads=new Set();
  const wc=new EventEmitter();wc.id=1;wc.getURL=()=>require('node:url').pathToFileURL(path.resolve(projectBasePath,'../Chartmodules/chart.html')).href;
  wc.executeJavaScript=async code=>vm.runInNewContext(code,{window:{__jsoChartEditor:{viewId,receive:m=>events.push(m)}}});
  const win={webContents:wc,isDestroyed:()=>destroyed,isFocused:()=>true},service=new EventEmitter();
- service.readManifest=async()=>({dataRevision:1});service.readData=async()=>({...state,projectionFormat:2});
+ service.readManifest=async()=>({dataRevision:1});service.readData=async()=>{if(failDataReads.has(++dataRead))throw Error('synthetic data read failure');return {...state,projectionFormat:2};};
  service.getSource=async()=>({hash:oldRuntime==='custom'?'c'.repeat(64):oldRuntime?'854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5':createHash('sha256').update(runtime).digest('hex'),codeRevision:1});
  service.editSource=async()=>{upgrades++;oldRuntime=false;};service.replaceData=async()=>{replacements++;const gate=projectionGate;projectionGate=null;if(gate){gate.enter();await gate.wait;}};
  const app=new EventEmitter(),client={call:async action=>{calls.push(action);return typeof response==='function'?response():response;}};
  const editor=await createEditor({chartService:service,projectBasePath,config:{},app,BrowserWindow:{getAllWindows:()=>[win]},client,stateRoot:root});t.after(()=>editor.shutdown());
  await editor.handle({chartId:'jso-local-candidate',name:'jso-editor',payload:{kind:'ready',viewId}});
- return {editor,events,calls,status:()=>events.filter(m=>m.kind==='read-status').at(-1),set:r=>{response=r;},holdProjection(){let enter,release,fail;const entered=new Promise(r=>enter=r),wait=new Promise((resolve,reject)=>{release=resolve;fail=reject;});projectionGate={enter,wait};return {entered,release,fail};},counts:()=>({replacements,upgrades}),close(){destroyed=true;wc.emit('destroyed');}};
+ return {editor,events,calls,failDataReads:(...indices)=>{dataRead=0;failDataReads=new Set(indices);},status:()=>events.filter(m=>m.kind==='read-status').at(-1),set:r=>{response=r;},holdProjection(){let enter,release,fail;const entered=new Promise(r=>enter=r),wait=new Promise((resolve,reject)=>{release=resolve;fail=reject;});projectionGate={enter,wait};return {entered,release,fail};},counts:()=>({replacements,upgrades}),close(){destroyed=true;wc.emit('destroyed');}};
 }
 test('read status advances only on success, including unchanged revisions; failures and access rejection retain facts/time',async t=>{
  const f=await host(t),first=f.status();assert.equal(first.status,'current');assert.ok(Number.isFinite(Date.parse(first.lastReadAt)));
@@ -54,6 +54,14 @@ test('successful coalesced projection restores current status after the first pr
  f.set(()=>new Promise(r=>release=r));const first=f.editor.refresh(),second=f.editor.refresh();
  release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});await gate.entered;gate.fail(Error('synthetic first projection failure'));
  const results=await Promise.all([first,second]);assert.equal(results[0].ok,false);assert.equal(results[1].ok,true);assert.equal(f.status().status,'current');assert.equal(f.calls.length,before+1);assert.equal(f.counts().replacements,2);
+});
+test('shared-flight status reflects any successful projection across success/failure combinations',async t=>{
+ for(const failures of [[],[1],[2],[1,2]]){
+  const f=await host(t);let release;const before=f.calls.length;f.failDataReads(...failures);
+  f.set(()=>new Promise(r=>release=r));const first=f.editor.refresh(),second=f.editor.refresh();
+  release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});const results=await Promise.all([first,second]);
+  assert.equal(results[0].ok,!failures.includes(1));assert.equal(results[1].ok,!failures.includes(2));assert.equal(f.status().status,failures.length===2?'unavailable':'current');assert.equal(f.calls.length,before+1);
+ }
 });
 async function renderer(t,sessions=[]){
  const {editorRuntime}=await import('./runtime.mjs'),dom=new JSDOM('<main></main>'),{window}=dom;t.after(()=>dom.window.close());
