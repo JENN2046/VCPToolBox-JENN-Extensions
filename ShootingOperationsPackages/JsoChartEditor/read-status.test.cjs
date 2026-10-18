@@ -49,6 +49,12 @@ test('coalesced waiters share a sequence when one projection fails and the other
  release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});await gate.entered;closed=true;gate.fail(Error('synthetic projection failure'));
  const results=await Promise.all([remaining,closing]);assert.equal(results[0].ok,false);assert.equal(results[1].code,'CHART_VIEW_CLOSED');assert.equal(f.status().status,'unavailable');assert.equal(f.calls.length,before+1);assert.equal(f.counts().replacements,1);
 });
+test('successful coalesced projection restores current status after the first projection rejects',async t=>{
+ const f=await host(t),gate=f.holdProjection();let release;const before=f.calls.length;
+ f.set(()=>new Promise(r=>release=r));const first=f.editor.refresh(),second=f.editor.refresh();
+ release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});await gate.entered;gate.fail(Error('synthetic first projection failure'));
+ const results=await Promise.all([first,second]);assert.equal(results[0].ok,false);assert.equal(results[1].ok,true);assert.equal(f.status().status,'current');assert.equal(f.calls.length,before+1);assert.equal(f.counts().replacements,2);
+});
 async function renderer(t,sessions=[]){
  const {editorRuntime}=await import('./runtime.mjs'),dom=new JSDOM('<main></main>'),{window}=dom;t.after(()=>dom.window.close());
  const runtime=vm.runInNewContext('('+editorRuntime.toString()+')()',{window,document:window.document,crypto:{randomUUID},Date,Intl});

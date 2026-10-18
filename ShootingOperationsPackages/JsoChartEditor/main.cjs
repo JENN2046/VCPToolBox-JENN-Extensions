@@ -43,8 +43,8 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   try{
    result=await flight.promise;
    if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-   readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
    if(result.ok)await project(result.state,isCurrent);
+   if(isCurrent()&&sequence===readSequence)readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
   }catch{
    result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
    if(isCurrent()){
