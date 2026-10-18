@@ -11,6 +11,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const root=stateRoot||path.join(app.getPath('userData'),'JSOChartEditor'),file=path.join(root,'pending.json');
  const binding=createHash('sha256').update(config.JSO_CHART_BRIDGE_URL||'injected-isolated-client').digest('hex');
  let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve(),readFlight=null,needsBootstrap=false;
+ let readStatus={status:'reading',lastReadAt:null},readSequence=0;
  const views=new Map(),ports=new Map();
  function persist(value){fs.mkdirSync(root,{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value),{mode:0o600});fs.renameSync(file+'.tmp',file);pending=value;}
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077))throw Error('CHART_JOURNAL_UNSAFE');const saved=JSON.parse(fs.readFileSync(file));if(saved&&saved.binding!==binding)throw Error('CHART_JOURNAL_BINDING_CHANGED');pending=saved;}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -23,24 +24,36 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    const data={source:'JSO',projectionFormat:2,refreshMode:'authenticated-http-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision]};
    try{manifest=await chartService.readManifest(CHART);prior=await chartService.readData(CHART);}
    catch(e){if(!['ENOENT','CHART_NOT_FOUND'].includes(e.code))throw e;if(!isCurrent())return;
-    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return;
+    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return true;
    }
-   if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return;
-   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return;
+   if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return true;
+   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return true;
    if(!isCurrent())return;
-   await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});
+   await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});return true;
   };
   const next=projectQueue.then(work);projectQueue=next.catch(()=>{});return next;
  }
  // One authenticated snapshot route for startup, polling and post-save reads.
  // After a write, wait out any pre-commit read and then start a fresh read.
  async function refresh({isCurrent=()=>!disposed,fresh=false}={}){
-  if(fresh&&readFlight)await readFlight;
+  if(fresh&&readFlight)await readFlight.promise;
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-  if(!readFlight){const flight=client.call('snapshot');readFlight=flight;void flight.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
-  const result=await readFlight;
+  if(!readFlight){const flight={promise:client.call('snapshot'),sequence:++readSequence};readFlight=flight;void flight.promise.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
+  const flight=readFlight,sequence=flight.sequence;let result;
+  try{
+   result=await flight.promise;
+   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
+   if(result.ok&&await project(result.state,isCurrent))flight.projected=true;
+   if(sequence===readSequence&&(isCurrent()||flight.projected))readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
+  }catch{
+   result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
+   if(isCurrent()){
+    if(sequence===readSequence&&!flight.projected)readStatus={...readStatus,status:'unavailable'};
+   }
+  }
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-  if(result.ok)await project(result.state,isCurrent);return result;
+  await Promise.all([...views.values()].map(record=>tell(record,{kind:'read-status',...readStatus})));
+  return result;
  }
  const refreshView=(record,fresh=false)=>refresh({fresh,isCurrent:()=>views.get(record.viewId)===record&&owned(record.win)});
  async function locate(viewId){
@@ -148,8 +161,8 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  },5000);timer.unref?.();
  return {shutdown(){disposed=true;clearInterval(timer);chartService.off('runtime-event',onEvent);chartService.off('change',onChange);app.removeListener('browser-window-created',created);for(const port of ports.values())port.dispose();ports.clear();views.clear();},refresh,handle};
 }
-// SHA256 of the two shipped, read-only JSO templates (legacy and auto-refresh).
-const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80'];
+// Exact shipped read-only templates and the PR20 editor; custom runtimes stay intact.
+const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80','854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5'];
 async function initialize(options){
  if(!options.config?.JSO_CHART_BRIDGE_URL)return;
  const {app,BrowserWindow}=require('electron');
