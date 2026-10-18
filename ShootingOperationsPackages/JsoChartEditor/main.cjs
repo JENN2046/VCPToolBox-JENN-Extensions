@@ -36,20 +36,18 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  // One authenticated snapshot route for startup, polling and post-save reads.
  // After a write, wait out any pre-commit read and then start a fresh read.
  async function refresh({isCurrent=()=>!disposed,fresh=false}={}){
-  if(fresh&&readFlight)await readFlight;
+  if(fresh&&readFlight)await readFlight.promise;
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-  if(!readFlight){const flight=client.call('snapshot');readFlight=flight;void flight.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
-  let result,sequence;
+  if(!readFlight){const flight={promise:client.call('snapshot'),sequence:++readSequence};readFlight=flight;void flight.promise.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
+  const flight=readFlight,sequence=flight.sequence;let result;
   try{
-   result=await readFlight;
+   result=await flight.promise;
    if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-   sequence=++readSequence;
    readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
    if(result.ok)await project(result.state,isCurrent);
   }catch{
    result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
    if(isCurrent()){
-    if(sequence===undefined)sequence=++readSequence;
     if(sequence===readSequence)readStatus={...readStatus,status:'unavailable'};
    }
   }

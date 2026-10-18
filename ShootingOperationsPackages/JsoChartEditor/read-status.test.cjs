@@ -43,6 +43,12 @@ test('older projection failure cannot overwrite a newer successful read and proj
  f.set({ok:true,state:{...state,revisions:{scheduleRevision:3,projectionRevision:4}}});const newer=f.editor.refresh();await new Promise(r=>setImmediate(r));gate.fail(Error('synthetic projection failure'));
  const results=await Promise.all([earlier,newer]);assert.equal(results[0].ok,false);assert.equal(results[1].ok,true);assert.equal(f.status().status,'current');assert.equal(f.counts().replacements,2);assert.ok(f.calls.every(c=>c==='snapshot'));
 });
+test('coalesced waiters share a sequence when one projection fails and the other view closes',async t=>{
+ const f=await host(t),gate=f.holdProjection();let release,closed=false;const before=f.calls.length;
+ f.set(()=>new Promise(r=>release=r));const remaining=f.editor.refresh(),closing=f.editor.refresh({isCurrent:()=>!closed});
+ release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});await gate.entered;closed=true;gate.fail(Error('synthetic projection failure'));
+ const results=await Promise.all([remaining,closing]);assert.equal(results[0].ok,false);assert.equal(results[1].code,'CHART_VIEW_CLOSED');assert.equal(f.status().status,'unavailable');assert.equal(f.calls.length,before+1);assert.equal(f.counts().replacements,1);
+});
 async function renderer(t,sessions=[]){
  const {editorRuntime}=await import('./runtime.mjs'),dom=new JSDOM('<main></main>'),{window}=dom;t.after(()=>dom.window.close());
  const runtime=vm.runInNewContext('('+editorRuntime.toString()+')()',{window,document:window.document,crypto:{randomUUID},Date,Intl});
