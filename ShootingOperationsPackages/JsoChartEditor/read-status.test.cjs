@@ -63,6 +63,13 @@ test('shared-flight status reflects any successful projection across success/fai
   assert.equal(results[0].ok,!failures.includes(1));assert.equal(results[1].ok,!failures.includes(2));assert.equal(f.status().status,failures.length===2?'unavailable':'current');assert.equal(f.calls.length,before+1);
  }
 });
+test('latest successful projection publishes recovery even if its waiter closes during the write',async t=>{
+ const f=await host(t);f.set({ok:false,code:'CHART_SERVICE_UNAVAILABLE'});await f.editor.refresh();assert.equal(f.status().status,'unavailable');
+ const gate=f.holdProjection();let release,closed=false;f.failDataReads(2);
+ f.set(()=>new Promise(r=>release=r));const closing=f.editor.refresh({isCurrent:()=>!closed}),remaining=f.editor.refresh();
+ release({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});await gate.entered;closed=true;gate.release();
+ const results=await Promise.all([closing,remaining]);assert.equal(results[0].code,'CHART_VIEW_CLOSED');assert.equal(results[1].ok,false);assert.equal(f.status().status,'current');assert.equal(f.counts().replacements,1);
+});
 async function renderer(t,sessions=[]){
  const {editorRuntime}=await import('./runtime.mjs'),dom=new JSDOM('<main></main>'),{window}=dom;t.after(()=>dom.window.close());
  const runtime=vm.runInNewContext('('+editorRuntime.toString()+')()',{window,document:window.document,crypto:{randomUUID},Date,Intl});
