@@ -11,6 +11,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const root=stateRoot||path.join(app.getPath('userData'),'JSOChartEditor'),file=path.join(root,'pending.json');
  const binding=createHash('sha256').update(config.JSO_CHART_BRIDGE_URL||'injected-isolated-client').digest('hex');
  let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve(),readFlight=null,needsBootstrap=false;
+ let readStatus={status:'reading',lastReadAt:null};
  const views=new Map(),ports=new Map();
  function persist(value){fs.mkdirSync(root,{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value),{mode:0o600});fs.renameSync(file+'.tmp',file);pending=value;}
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077))throw Error('CHART_JOURNAL_UNSAFE');const saved=JSON.parse(fs.readFileSync(file));if(saved&&saved.binding!==binding)throw Error('CHART_JOURNAL_BINDING_CHANGED');pending=saved;}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -38,9 +39,16 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   if(fresh&&readFlight)await readFlight;
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
   if(!readFlight){const flight=client.call('snapshot');readFlight=flight;void flight.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
-  const result=await readFlight;
+  let result;
+  try{
+   result=await readFlight;
+   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
+   readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
+   if(result.ok)await project(result.state,isCurrent);
+  }catch{result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};if(isCurrent())readStatus={...readStatus,status:'unavailable'};}
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
-  if(result.ok)await project(result.state,isCurrent);return result;
+  await Promise.all([...views.values()].map(record=>tell(record,{kind:'read-status',...readStatus})));
+  return result;
  }
  const refreshView=(record,fresh=false)=>refresh({fresh,isCurrent:()=>views.get(record.viewId)===record&&owned(record.win)});
  async function locate(viewId){
@@ -148,8 +156,8 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  },5000);timer.unref?.();
  return {shutdown(){disposed=true;clearInterval(timer);chartService.off('runtime-event',onEvent);chartService.off('change',onChange);app.removeListener('browser-window-created',created);for(const port of ports.values())port.dispose();ports.clear();views.clear();},refresh,handle};
 }
-// SHA256 of the two shipped, read-only JSO templates (legacy and auto-refresh).
-const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80'];
+// Exact shipped read-only templates and the PR20 editor; custom runtimes stay intact.
+const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80','854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5'];
 async function initialize(options){
  if(!options.config?.JSO_CHART_BRIDGE_URL)return;
  const {app,BrowserWindow}=require('electron');

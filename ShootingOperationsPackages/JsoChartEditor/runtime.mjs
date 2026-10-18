@@ -4,18 +4,29 @@ export function editorRuntime(){
  return {
   mount(context){
    this.context=context;this.viewId=crypto.randomUUID();this.pending=null;this.drag=null;this.stale=false;this.readOnly=false;
+   this.readStatus={status:'reading',lastReadAt:null};
    const self=this;
    window.__jsoChartEditor={viewId:this.viewId,receive:m=>self.receive(m),proof:(kind,input)=>self.proof(kind,input)};
    this.render();context.emit('jso-editor',{kind:'ready',viewId:this.viewId});
   },
   format(t){return new Date(t).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});},
   el(tag,text,parent,css=''){const e=document.createElement(tag);if(text!==null)e.textContent=text;if(css)e.style.cssText=css;parent?.append(e);return e;},
+  renderReadStatus(){
+   const s=this.readStatus,last=s.lastReadAt?'上次成功读取：北京时间 '+this.format(s.lastReadAt):'尚未成功读取';
+   const message=s.status==='current'?'最近一次读取成功。':s.status==='denied'?'读取被拒，请核对连接或身份；当前显示可能过期。':s.status==='unavailable'?'暂未取回最新安排；当前显示可能过期。':'正在读取 JSO 最新安排…';
+   if(this.readMessage)this.readMessage.textContent=message+' '+last;
+   if(this.emptyMessage)this.emptyMessage.textContent=s.status==='current'?'当前没有已确认排班；在 JSO 排期后会自动显示。':s.lastReadAt?'当前保留上次读到的空排班，可能过期。':'尚未取得已确认排班，不能判断当前是否为空。';
+  },
   render(){
    const root=this.context.root,d=this.context.data;root.replaceChildren();
    this.el('h2','JSO · 拍摄排班',root);this.el('p','北京时间 · 排程 '+d.revisions.scheduleRevision+' / 投影 '+d.revisions.projectionRevision+' · 自动补读约5秒',root);
    this.el('p','拖动场次调整时间，拖右侧边缘调整结束时间；点一次“保存”提交。',root);
    this.message=this.el('p',this.status||'',root,'white-space:pre-wrap');this.message.dataset.jsoMessage='';
+   this.readMessage=this.el('p','',root);this.readMessage.dataset.jsoReadStatus='';this.readMessage.setAttribute('role','status');
+   this.emptyMessage=null;
    const list=this.el('div',null,root);
+   if(!d.sessions.length){this.emptyMessage=this.el('p','',list);this.emptyMessage.dataset.jsoEmpty='';}
+   this.renderReadStatus();
    for(const s of d.sessions){
     const progress=d.progress.find(p=>p.scheduleItemId===s.scheduleItemId),run=progress?.runs.at(-1);
     const names=(progress?.requestIds||[]).map(id=>d.orders.find(o=>o.id===id)?.name||'拍摄场次').join('、');
@@ -71,6 +82,7 @@ export function editorRuntime(){
   clearDraft(){this.pending=null;this.stale=false;},
   receive(m){
    if(m.viewId!==this.viewId)return;
+   if(m.kind==='read-status'){this.readStatus={status:m.status,lastReadAt:m.lastReadAt};this.renderReadStatus();return;}
    if(m.kind==='preview'&&this.pending?.requestId===m.requestId){
     if(m.ok&&m.canApply&&!this.stale){this.pending.previewId=m.previewId;this.pending.presentation=m.presentation;this.preview.textContent=m.presentation;this.save.disabled=false;this.save.dataset.previewId=m.previewId;this.status='核对影响后点“保存”；尚未写入。';}
     else{this.clearDraft();this.status=m.message||'无法保存，请重新拖动。';this.render();this.preview.textContent=m.presentation||'';}
