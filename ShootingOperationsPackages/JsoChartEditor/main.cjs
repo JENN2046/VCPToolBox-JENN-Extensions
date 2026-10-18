@@ -11,7 +11,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  const root=stateRoot||path.join(app.getPath('userData'),'JSOChartEditor'),file=path.join(root,'pending.json');
  const binding=createHash('sha256').update(config.JSO_CHART_BRIDGE_URL||'injected-isolated-client').digest('hex');
  let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve(),readFlight=null,needsBootstrap=false;
- let readStatus={status:'reading',lastReadAt:null};
+ let readStatus={status:'reading',lastReadAt:null},readSequence=0;
  const views=new Map(),ports=new Map();
  function persist(value){fs.mkdirSync(root,{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value),{mode:0o600});fs.renameSync(file+'.tmp',file);pending=value;}
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077))throw Error('CHART_JOURNAL_UNSAFE');const saved=JSON.parse(fs.readFileSync(file));if(saved&&saved.binding!==binding)throw Error('CHART_JOURNAL_BINDING_CHANGED');pending=saved;}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -39,13 +39,20 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   if(fresh&&readFlight)await readFlight;
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
   if(!readFlight){const flight=client.call('snapshot');readFlight=flight;void flight.finally(()=>{if(readFlight===flight)readFlight=null;}).catch(()=>{});}
-  let result;
+  let result,sequence;
   try{
    result=await readFlight;
    if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
+   sequence=++readSequence;
    readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
    if(result.ok)await project(result.state,isCurrent);
-  }catch{result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};if(isCurrent())readStatus={...readStatus,status:'unavailable'};}
+  }catch{
+   result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
+   if(isCurrent()){
+    if(sequence===undefined)sequence=++readSequence;
+    if(sequence===readSequence)readStatus={...readStatus,status:'unavailable'};
+   }
+  }
   if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
   await Promise.all([...views.values()].map(record=>tell(record,{kind:'read-status',...readStatus})));
   return result;

@@ -13,11 +13,11 @@ async function host(t,oldRuntime=false){
  const win={webContents:wc,isDestroyed:()=>destroyed,isFocused:()=>true},service=new EventEmitter();
  service.readManifest=async()=>({dataRevision:1});service.readData=async()=>({...state,projectionFormat:2});
  service.getSource=async()=>({hash:oldRuntime==='custom'?'c'.repeat(64):oldRuntime?'854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5':createHash('sha256').update(runtime).digest('hex'),codeRevision:1});
- service.editSource=async()=>{upgrades++;oldRuntime=false;};service.replaceData=async()=>{replacements++;if(projectionGate){projectionGate.enter();await projectionGate.wait;}};
+ service.editSource=async()=>{upgrades++;oldRuntime=false;};service.replaceData=async()=>{replacements++;const gate=projectionGate;projectionGate=null;if(gate){gate.enter();await gate.wait;}};
  const app=new EventEmitter(),client={call:async action=>{calls.push(action);return typeof response==='function'?response():response;}};
  const editor=await createEditor({chartService:service,projectBasePath,config:{},app,BrowserWindow:{getAllWindows:()=>[win]},client,stateRoot:root});t.after(()=>editor.shutdown());
  await editor.handle({chartId:'jso-local-candidate',name:'jso-editor',payload:{kind:'ready',viewId}});
- return {editor,events,calls,status:()=>events.filter(m=>m.kind==='read-status').at(-1),set:r=>{response=r;},holdProjection(){let enter,release;const entered=new Promise(r=>enter=r),wait=new Promise(r=>release=r);projectionGate={enter,wait};return {entered,release};},counts:()=>({replacements,upgrades}),close(){destroyed=true;wc.emit('destroyed');}};
+ return {editor,events,calls,status:()=>events.filter(m=>m.kind==='read-status').at(-1),set:r=>{response=r;},holdProjection(){let enter,release,fail;const entered=new Promise(r=>enter=r),wait=new Promise((resolve,reject)=>{release=resolve;fail=reject;});projectionGate={enter,wait};return {entered,release,fail};},counts:()=>({replacements,upgrades}),close(){destroyed=true;wc.emit('destroyed');}};
 }
 test('read status advances only on success, including unchanged revisions; failures and access rejection retain facts/time',async t=>{
  const f=await host(t),first=f.status();assert.equal(first.status,'current');assert.ok(Number.isFinite(Date.parse(first.lastReadAt)));
@@ -37,6 +37,11 @@ test('late projection completion cannot hide a more recent read failure',async t
  const f=await host(t),gate=f.holdProjection();f.set({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});const earlier=f.editor.refresh();await gate.entered;
  f.set({ok:false,code:'CHART_SERVICE_UNAVAILABLE'});await f.editor.refresh();const failure=f.status();assert.equal(failure.status,'unavailable');
  gate.release();await earlier;assert.equal(f.status().status,'unavailable');assert.equal(f.status().lastReadAt,failure.lastReadAt);
+});
+test('older projection failure cannot overwrite a newer successful read and projection',async t=>{
+ const f=await host(t),gate=f.holdProjection();f.set({ok:true,state:{...state,revisions:{scheduleRevision:2,projectionRevision:3}}});const earlier=f.editor.refresh();await gate.entered;
+ f.set({ok:true,state:{...state,revisions:{scheduleRevision:3,projectionRevision:4}}});const newer=f.editor.refresh();await new Promise(r=>setImmediate(r));gate.fail(Error('synthetic projection failure'));
+ const results=await Promise.all([earlier,newer]);assert.equal(results[0].ok,false);assert.equal(results[1].ok,true);assert.equal(f.status().status,'current');assert.equal(f.counts().replacements,2);assert.ok(f.calls.every(c=>c==='snapshot'));
 });
 async function renderer(t,sessions=[]){
  const {editorRuntime}=await import('./runtime.mjs'),dom=new JSDOM('<main></main>'),{window}=dom;t.after(()=>dom.window.close());
