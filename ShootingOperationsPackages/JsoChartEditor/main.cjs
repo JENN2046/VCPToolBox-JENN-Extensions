@@ -162,7 +162,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  return {shutdown(){disposed=true;clearInterval(timer);chartService.off('runtime-event',onEvent);chartService.off('change',onChange);app.removeListener('browser-window-created',created);for(const port of ports.values())port.dispose();ports.clear();views.clear();},refresh,handle};
 }
 // Exact shipped read-only templates and the PR20 editor; custom runtimes stay intact.
-const KNOWN_RUNTIME_HASHES=['ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80','854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5'];
+const KNOWN_RUNTIME_HASHES=['38da2b1a594ef85766c33bd3755157bec7dfde396b7de46177a0424236e432d6','ac11206e74cf622e8b4075c4693be7ee82a2f0c0809e690b0f032b38ddeb763b','810b92afe6f17b071b0e776ad169be0d9ac4aab21cf6e5735107fabbb9d09b80','854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5'];
 async function initialize(options){
  if(!options.config?.JSO_CHART_BRIDGE_URL)return;
  const {app,BrowserWindow}=require('electron');

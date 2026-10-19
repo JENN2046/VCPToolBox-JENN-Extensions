@@ -12,7 +12,7 @@ async function host(t,oldRuntime=false){
  wc.executeJavaScript=async code=>vm.runInNewContext(code,{window:{__jsoChartEditor:{viewId,receive:m=>events.push(m)}}});
  const win={webContents:wc,isDestroyed:()=>destroyed,isFocused:()=>true},service=new EventEmitter();
  service.readManifest=async()=>({dataRevision:1});service.readData=async()=>{if(failDataReads.has(++dataRead))throw Error('synthetic data read failure');return {...state,projectionFormat:2};};
- service.getSource=async()=>({hash:oldRuntime==='custom'?'c'.repeat(64):oldRuntime?'854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5':createHash('sha256').update(runtime).digest('hex'),codeRevision:1});
+ service.getSource=async()=>({hash:oldRuntime==='custom'?'c'.repeat(64):oldRuntime==='previous-shipped'?'38da2b1a594ef85766c33bd3755157bec7dfde396b7de46177a0424236e432d6':oldRuntime?'854bed0931c51e827cc4369a417d4a1a818738e9e218592c5b7ca685952ebbd5':createHash('sha256').update(runtime).digest('hex'),codeRevision:1});
  service.editSource=async()=>{upgrades++;oldRuntime=false;};service.replaceData=async()=>{replacements++;const gate=projectionGate;projectionGate=null;if(gate){gate.enter();await gate.wait;}};
  const app=new EventEmitter(),client={call:async action=>{calls.push(action);return typeof response==='function'?response():response;}};
  const editor=await createEditor({chartService:service,projectBasePath,config:{},app,BrowserWindow:{getAllWindows:()=>[win]},client,stateRoot:root});t.after(()=>editor.shutdown());
@@ -90,3 +90,5 @@ test('read status updates preserve slot DOM, drag, preview, stale Save, and unre
  f.send('denied','2040-01-01T01:00:00.000Z');f.send('current','2040-01-01T01:01:00.000Z');assert.equal(slot.isConnected,true);assert.equal(f.runtime.pending,pending);assert.equal(f.runtime.drag.id,'S');assert.equal(f.runtime.preview.textContent,pending.presentation);assert.equal(f.runtime.stale,true);assert.equal(f.runtime.save.disabled,true);assert.equal(f.runtime.message.textContent,'JSO 已有新安排');
  f.runtime.drag=null;f.runtime.receive({kind:'result',viewId:f.runtime.viewId,unknown:true,message:'保存结果待核对；未重复提交。'});f.send('current','2040-01-01T01:02:00.000Z');assert.equal(f.runtime.readOnly,true);assert.equal(f.runtime.message.textContent,'保存结果待核对；未重复提交。');assert.equal(f.runtime.save.disabled,true);
 });
+
+test('currently installed shipped editor upgrades to future-date hint while custom runtimes stay intact',async t=>{const shipped=await host(t,'previous-shipped');assert.equal(shipped.counts().upgrades,1);const custom=await host(t,'custom');assert.equal(custom.counts().upgrades,0);});

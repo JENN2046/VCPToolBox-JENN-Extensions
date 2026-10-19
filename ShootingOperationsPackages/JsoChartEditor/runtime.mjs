@@ -20,7 +20,7 @@ export function editorRuntime(){
   render(){
    const root=this.context.root,d=this.context.data;root.replaceChildren();
    this.el('h2','JSO · 拍摄排班',root);this.el('p','北京时间 · 排程 '+d.revisions.scheduleRevision+' / 投影 '+d.revisions.projectionRevision+' · 自动补读约5秒',root);
-   this.el('p','拖动场次调整时间，拖右侧边缘调整结束时间；点一次“保存”提交。',root);
+   this.el('p','未开拍场次可在原日期内调整（含未来日期）；拖动整块改时间，拖右边缘改结束。核对预览后点一次“保存”。',root);
    this.message=this.el('p',this.status||'',root,'white-space:pre-wrap');this.message.dataset.jsoMessage='';
    this.readMessage=this.el('p','',root);this.readMessage.dataset.jsoReadStatus='';this.readMessage.setAttribute('role','status');
    this.emptyMessage=null;

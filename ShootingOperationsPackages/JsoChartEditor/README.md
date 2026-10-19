@@ -1,6 +1,6 @@
 # JSO 图表拖拽保存（HTTP 本地可审候选）
 
-JSO 是唯一业务事实源。图表坐标转换成已有场次 ID、资源 ID 和 UTC 时间，先调用现有 day-adjustment/preview；用户核对受影响场次后，点击一次“保存”调用现有 apply。拖动、取消和失败预览都不写事实。已开拍场次只允许拖结束边缘调整预计结束，不重写实际开拍或完成记录。当前界面限制同一天，步长 5 分钟。
+JSO 是唯一业务事实源。图表坐标转换成已有场次 ID、资源 ID 和 UTC 时间，先调用现有 day-adjustment/preview；用户核对受影响场次后，点击一次“保存”调用现有 apply。拖动、取消和失败预览都不写事实。已开拍场次只允许拖结束边缘调整预计结束，不重写实际开拍或完成记录。当前界面限制场次原日期内（包括未来日期），步长 5 分钟；未来计划按目标日期日历预览该日后续影响。正在拍摄的预计结束仍仅限当天。跨天移动使用管理页拍摄改期。需要配套 JSO future-chart-drag 候选；旧服务端会拒绝未来拖动，不能视为已上线。
 
 保存由现有 Chat main-process 原生输入捕获绑定到当前窗口、预览与版本。renderer 事件不携带凭据；单独脚本 click 不能保存。复用 JSO 管理员身份、业务校验、摘要、版本检查、幂等操作与回执，无新 Agent 写工具或新审批流程。
 
@@ -8,7 +8,9 @@ JSO 是唯一业务事实源。图表坐标转换成已有场次 ID、资源 ID 
 
 ## 包装与配置（尚未安装到日常环境）
 
-基于合并版 Chat `5af217ad99091e673060c2540ebf8db5bda69223`、Extensions `e9f046ccbd806e9c5f96915fc4cb151430e5baf6` 与 JSO `70c2d828dfced0278029562c94f14dd1cddc98b0`；JSO 配套候选为 `dbb6c147b62670fde8ccb93d75de3f8ff51518d5`，仅增加管理页自动补读。ToolBox 核心固定 `8f489ff09808e26b8469d97b893e1cec6226845c`。不依赖三个仓库前一版自动刷新提交。复用合并版已有 ChartService、图表事件和 nativePort，无宿主核心改动；不承诺更旧日常客户端直接兼容。
+历史 HTTP 补读配对基线为合并版 Chat `5af217ad99091e673060c2540ebf8db5bda69223`、Extensions `e9f046ccbd806e9c5f96915fc4cb151430e5baf6` 与 JSO `70c2d828dfced0278029562c94f14dd1cddc98b0`；其中 `dbb6c147b62670fde8ccb93d75de3f8ff51518d5` 仅是管理页自动补读候选，不具备未来日期拖动能力，也不是本轮未来拖动的服务端发布目标。ToolBox 核心固定 `8f489ff09808e26b8469d97b893e1cec6226845c`。不依赖三个仓库前一版自动刷新提交。复用合并版已有 ChartService、图表事件和 nativePort，无宿主核心改动；不承诺更旧日常客户端直接兼容。
+
+未来日期拖动必需的服务端候选是 [JSO #77](https://github.com/JENN2046/jenn-shooting-operations/pull/77)，完整 HEAD 为 [`d08dfd5cbea82e8f18ca675c7f433edbf0741bd7`](https://github.com/JENN2046/jenn-shooting-operations/commit/d08dfd5cbea82e8f18ca675c7f433edbf0741bd7)。这是尚未合并、尚未发布的候选，不是已上线版本；旧服务端（包括上述仅补读候选）仍会以 `DYNAMIC_TODAY_ONLY` 拒绝未来日期预览，单独升级插件提示不能启用能力。
 
 服务端仅需 `Plugin/JsoChartBridge/{plugin-manifest.json,service.cjs}` 和 `ShootingOperationsPackages/JsoChartEditor/bridge.cjs` 三个运行文件，保留相对路径。通过现有插件配置加载：
 
@@ -41,4 +43,4 @@ node ShootingOperationsPackages/JsoChartEditor/stage-client.cjs /absolute/new/st
 
 源代码回归入口为 `node --test ShootingOperationsPackages/JsoChartEditor/*.test.cjs`，DOM 测试需既有 jsdom 测试依赖；`JSO_CHART_TEST_CHAT_ROOT` 可指定上述 Chat 源码根目录。本地保存并发测试使用该源码的 nativePort。首次安装或热重载插件后重新打开/重载图表页面，不承诺给未重载的旧 runtime 热挂载。
 
-本次交付的固定 SHA、18 个真实隔离 Electron 场景、测试/复审记录和 PR 草稿在配套交付目录。测试驱动输入不是真人验收，未覆盖模型、生产、完整日常客户端、完整 ToolBox server 或实际 TLS 部署。最小发布顺序：按既有 R5 流程发布配套 JSO 管理页候选，再加载 ToolBox bridge，最后在已验证 Chat 基线安装本机编辑插件并重开图表。既有授权值仅通过环境变量引用；本候选不授权日常安装、推送、创建 PR 或部署。
+本次交付的固定 SHA、18 个真实隔离 Electron 场景、测试/复审记录和 PR 草稿在配套交付目录。测试驱动输入不是真人验收，未覆盖模型、生产、完整日常客户端、完整 ToolBox server 或实际 TLS 部署。最小发布顺序：先核准并合并上述 JSO #77 候选，记录真实合并 SHA/tree，按该发布身份冻结镜像并走既有 R5 流程部署、核验服务端未来日期能力；再更新本机插件提示并重开图表。若合并 SHA 与候选 HEAD 不同，不得将候选镜像、标签或旧 CI 改标为合并版本；须按真实合并 SHA 重建/绑定并完成必要验证。既有 ToolBox bridge 与 Chat 配置可复用；首次安装才按上文加载 bridge，不因本次升级重配凭据。既有授权值仅通过环境变量引用；本候选不授权日常安装、推送、创建 PR 或部署。
