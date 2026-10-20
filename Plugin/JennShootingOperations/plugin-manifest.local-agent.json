@@ -26,7 +26,8 @@
     "invocationCommands": [
       {
         "commandIdentifier": "read_state",
-        "description": "Read authoritative JSO orders, resources, schedule and progress."
+        "description": "只读查询当前权威订单、资源、排期和进度，不执行排期变更。参数：command（必填）固定为 read_state；payload_json（可选）必须是 JSON 对象的字符串，省略时默认为 {}，按服务端已配置的资源白名单查询。可用 {\"resourceScope\":[\"<已获准的资源ID>\"]} 缩小范围，不得猜测或扩展资源。不要传 date、role、token、approved 等额外字段。可选 VCP 署名 maid/valet 仅为不可信追踪信息（非空字符串，最多160字符，无控制字符；同时出现时须一致），不授予身份或写权限。最简调用：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」read_state「末」\n<<<[END_TOOL_REQUEST]>>>\n显式空参数：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」read_state「末」,\npayload_json:「始」{}「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」示例助手「末」,\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」read_state「末」,\npayload_json:「始」{}「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "commandIdentifier": "preview_shift",
@@ -35,7 +36,8 @@
       },
       {
         "commandIdentifier": "read_receipt",
-        "description": "Reconcile the original operationId."
+        "description": "只读核对原操作回执，不重新提交。参数：command（必填）固定为 read_receipt；payload_json（必填）为 JSON 对象字符串 {\"operationId\":\"<原操作ID>\"}，必须使用真实原ID，不得生成新ID重试。可选 maid/valet 的署名规则同 read_state，不参与授权。仅接受资源范围内的 reschedule 回执。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」read_receipt「末」,\npayload_json:「始」{\"operationId\":\"<原操作ID>\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   },
