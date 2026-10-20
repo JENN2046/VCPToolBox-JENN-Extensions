@@ -1,6 +1,22 @@
 'use strict';
 const {createAgentAdapter}=require('./index.cjs');
 const READ_COMMANDS=new Set(['read_state','read_receipt','preview_calendar','preview_shift','propose_reschedule']);
+const VCP_ARGUMENT_KEYS=new Set(['command','payload_json','maid','valet']);
+function normalizeConfiguredArguments(args){
+ if(!args||Object.getPrototypeOf(args)!==Object.prototype||!Object.hasOwn(args,'command')
+  ||typeof args.command!=='string'||Object.keys(args).some(key=>!VCP_ARGUMENT_KEYS.has(key)))return null;
+ // VCP signatures are untrusted trace metadata, never a JSO identity or grant.
+ // Strip only this explicit allowlist before the strict JSO API envelope.
+ for(const key of ['maid','valet'])if(Object.hasOwn(args,key)){
+  const value=args[key];
+  if(typeof value!=='string'||!value.trim()||value.length>160||/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value))return null;
+ }
+ if(Object.hasOwn(args,'maid')&&Object.hasOwn(args,'valet')&&args.maid.trim()!==args.valet.trim())return null;
+ // Only omission on this read-only command has a default. Explicit malformed
+ // values and every other command retain their existing required payload.
+ const payload_json=Object.hasOwn(args,'payload_json')?args.payload_json:args.command==='read_state'?'{}':undefined;
+ return typeof payload_json==='string'?{command:args.command,payload_json}:null;
+}
 function parseConfig(env){
  const endpoint=String(env.JSO_LOCAL_AGENT_ENDPOINT||'');
  const token=env.JSO_LOCAL_AGENT_TOKEN;
@@ -15,7 +31,8 @@ function parseConfig(env){
 function createConfiguredAdapter(config,{fetchImpl=fetch}={}){
  const transport=createAgentAdapter({endpoint:config.endpoint,token:config.token,fetchImpl});
  return {async call(args){
-  if(!args||Object.keys(args).sort().join(',')!=='command,payload_json'||typeof args.payload_json!=='string')return {ok:false,code:'INVALID_AGENT_ARGUMENTS'};
+  args=normalizeConfiguredArguments(args);
+  if(!args)return {ok:false,code:'INVALID_AGENT_ARGUMENTS'};
   // Model/stdin calls have no authenticated native confirmation context. A setting never grants it.
   if(!READ_COMMANDS.has(args.command))return {ok:false,code:'TRUSTED_CONVERSATION_INTERFACE_REQUIRED'};
   let payload;try{payload=JSON.parse(args.payload_json);}catch{return {ok:false,code:'INVALID_AGENT_ARGUMENTS'};}
