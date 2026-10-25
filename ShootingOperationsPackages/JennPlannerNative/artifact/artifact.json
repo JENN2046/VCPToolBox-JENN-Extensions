@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "chartId": "jso-calendar-isolated",
+  "sourceHash": "4e840c7e5a757b25e31991dccf38d78ff2aa1b275c24e8bdb855032ea7775dce",
+  "protocol": "jso-editor",
+  "hashes": {
+    "runtime.js": "353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76",
+    "template.html": "faf9a7604a75494779c5d001d0d464c5a6ee21aa14dc9ec48d1deeed7c5e4b96",
+    "style.css": "e02860087576a897d96422dab32194230ba197738fa89bb7870110ab4ff29d4d"
+  }
+}

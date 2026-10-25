@@ -1,0 +1,7 @@
+{
+ "name":"JennPlannerNative","displayName":"Jenn 拍摄排班 · 原日历隔离候选","version":"0.1.0-local",
+ "pluginType":"service","communication":{"protocol":"direct"},
+ "entryPoint":{"type":"nodejs","script":"service.cjs"},"capabilities":{},
+ "configSchema":{"JSO_CHART_BRIDGE_URL":"string","JSO_CHART_TRANSPORT_TOKEN_ENV":"string","JSO_CHART_APPLICATION_AUTHORIZATION_ENV":"string"},
+ "description":"仅创建固定隔离图表，复用既有 JSO 身份、预览与原生确认；不替换用户图表。"
+}

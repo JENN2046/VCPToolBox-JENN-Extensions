@@ -1,0 +1,38 @@
+<div class="jso-calendar-root">
+  <a class="skip-link" href="#main">跳至内容</a>
+  <header class="topbar">
+    <a class="brand" href="#"><strong>Jenn 拍摄排班</strong><span>拍摄工作台</span></a>
+    <nav aria-label="主导航"><a href="#" aria-current="page">排班</a><a href="#">工作安排</a><a id="create-order-link" class="nav-submit" href="#">＋ 提需求</a></nav>
+  </header>
+  <main id="main" class="shell board-shell">
+    <form id="board-login" hidden><label>Jenn 访问令牌 <input id="board-token" type="password" autocomplete="off" required></label><button>登录看板</button><p>令牌仅保存在当前页面内存中，退出或刷新后需重新登录。</p></form><button id="board-logout" type="button" hidden>退出</button><p>VCP · 同日拖动编辑候选 · 宿主认证</p><div class="load-state"><p id="message" class="board-status" role="status">正在读取排班…</p><button id="retry" class="secondary-button" type="button" hidden>重新读取</button></div>
+    <section id="board" class="board" hidden>
+      <div class="board-heading">
+        <div><h1>拍摄排班</h1><p id="calendar-title" class="calendar-title" aria-live="polite"></p></div>
+        <div class="calendar-controls" aria-label="日历导航">
+          <div class="view-switch" aria-label="日历视图">
+            <button id="view-week" type="button" aria-pressed="true">周视图</button>
+            <button id="view-month" type="button" aria-pressed="false">月视图</button>
+          </div>
+          <div class="period-switch"><button id="previous-period" type="button" class="secondary-button square-button" aria-label="上一周">‹</button><button id="current-period" type="button" class="secondary-button">今天</button><button id="next-period" type="button" class="secondary-button square-button" aria-label="下一周">›</button></div>
+        </div>
+      </div>
+      <div class="board-layout">
+        <div class="calendar-area">
+          <div class="calendar-scroll">
+            <div id="calendar-weekdays" class="calendar-weekdays" aria-hidden="true" hidden><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div>
+            <div id="calendar" aria-label="拍摄日历"></div>
+          </div>
+          <section id="day-agenda" class="day-agenda" aria-label="当日场次"></section>
+          <div class="calendar-footnote"><span id="period-summary"></span><span class="legend"><i class="legend-print"></i>平面<i class="legend-video"></i>视频</span></div>
+        </div>
+        <aside class="pending-panel" aria-labelledby="pending-title"><div class="section-title"><h2 id="pending-title">待排任务</h2><span id="pending-count" class="count-badge">0</span></div><div id="pending" class="task-grid"></div></aside>
+      </div>
+      <p id="revision" class="revision"></p>
+    </section>
+  </main>
+  <dialog id="session-dialog" class="session-dialog" aria-labelledby="session-dialog-title"><div class="dialog-heading"><h2 id="session-dialog-title">拍摄详情</h2><button class="secondary-button" type="button" id="close-session">关闭</button></div><div id="session-dialog-content"></div></dialog>
+  <section id="save-recovery" hidden><p>上次保存结果待核对，请先查询原操作。</p><button id="recover-save" type="button">核对原操作</button></section>
+  <dialog id="adjustment-dialog" aria-labelledby="adjustment-title"><h2 id="adjustment-title">核对整批时间调整</h2><p id="adjustment-summary"></p><ul id="adjustment-changes"></ul><div><button id="adjustment-confirm" type="button">确认保存</button><button id="adjustment-cancel" type="button">取消</button></div></dialog>
+
+</div>
