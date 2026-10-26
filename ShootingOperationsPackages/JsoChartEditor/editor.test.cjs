@@ -45,3 +45,10 @@ test('re-drag after a stale preview uses latest stable session facts and revisio
  const latestSlot=window.document.querySelector('[data-jso-slot]');latestSlot.setPointerCapture=()=>{};latestSlot.dispatchEvent(event);assert.equal(runtime.drag.start,Date.parse('2040-01-02T01:00:00.000Z'));assert.equal(runtime.drag.origin,Date.parse('2040-01-02T00:00:00+08:00'));
  runtime.destroy();dom.window.close();
 });
+test('native snapshot exposes explicit display context and movable-state fields without exposing attachments',()=>{
+ const value=chartState({...state,writeAdmission:'enabled',principal:{...principal,resourceIds:['R']},orderFacts:[{id:'A',name:'allowed',references:['private-attachment'],submission:{sku:'SYNTHETIC',coreBriefSummary:'synthetic brief',requestedBy:'synthetic requester',desiredDate:'2040-01-01',deliverables:{count:1}}}],sessions:[{id:'S',resourceId:'R',requestIds:['A'],runs:[],allocationMode:'single',resourceResolutionStatus:'resolved',hasRunHistory:0}]},['R']);
+ assert.equal(value.writeAdmission,'enabled');assert.equal(value.businessToday,'2040-01-01');assert.equal(value.ownerBinding,JSON.stringify(['owner',['R']]));assert.equal(value.sessions[0].allocationMode,'single');assert.equal(value.sessions[0].resourceResolutionStatus,'resolved');assert.equal(value.sessions[0].hasRunHistory,0);assert.equal(value.orders[0].sku,'SYNTHETIC');assert.ok(!JSON.stringify(value).includes('private-attachment'));
+});
+test('snapshot rejects an application Owner changing between session authentication and management read',async()=>{
+ const f=bridge([principal,{...state,principal:{...principal,subjectId:'different-owner'}}]);assert.equal((await f.bridge.run('snapshot',{},auth)).code,'APPLICATION_SESSION_CHANGED');assert.equal(f.calls.length,2);
+});

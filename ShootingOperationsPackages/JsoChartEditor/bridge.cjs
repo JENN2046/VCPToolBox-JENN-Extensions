@@ -12,12 +12,12 @@ function chartState(state,scope){
  if(!state?.ok||state.protocolVersion!==3||state.principal?.role!=='administrator'||!revisions(state.revisions))throw Error('SNAPSHOT_INVALID');
  const sessions=state.sessions.filter(s=>scope.includes(s.resourceId));const assigned=new Set(sessions.flatMap(s=>s.requestIds));
  const catalogue=state.principal.resourceIds.every(id=>scope.includes(id));
- const orders=state.orderFacts.filter(o=>assigned.has(o.id)||(catalogue&&!state.sessions.some(s=>s.requestIds.includes(o.id)))).map(o=>({id:o.id,name:o.name,kind:o.kind,shootingSubtype:o.shootingSubtype,lifecycle:o.lifecycle}));
+ const orders=state.orderFacts.filter(o=>assigned.has(o.id)||(catalogue&&!state.sessions.some(s=>s.requestIds.includes(o.id)))).map(o=>({id:o.id,name:o.name,kind:o.kind,shootingSubtype:o.shootingSubtype,lifecycle:o.lifecycle,sku:o.submission?.sku,coreBriefSummary:o.submission?.coreBriefSummary,client:o.client,productionType:o.submission?.productionType,requestedBy:o.submission?.requestedBy,desiredDate:o.submission?.desiredDate,deliverableCount:o.submission?.deliverables?.count}));
  const active=state.configs.find(c=>c.active);
- return {ok:true,businessSchemaVersion:12,businessToday:state.businessToday,revisions:state.revisions,
+ return {ok:true,businessSchemaVersion:12,writeAdmission:state.writeAdmission,ownerBinding:JSON.stringify([state.principal.subjectId,[...scope].sort()]),businessToday:state.businessToday,revisions:state.revisions,
   activeConfig:active?{businessTimeZone:active.configJson.businessTimeZone,configVersion:active.configVersion,configDigest:active.configDigest}:null,
   resources:state.resources.filter(r=>scope.includes(r.resource_id)).map(r=>({resourceId:r.resource_id,displayName:r.v1_display_place,status:r.status})),orders,
-  sessions:sessions.map(s=>({scheduleItemId:s.id,resourceId:s.resourceId,plannedStart:s.plannedStart,plannedEnd:s.plannedEnd,bufferAfterMinutes:s.bufferAfterMinutes,status:s.status,lockStatus:s.lockStatus})),
+  sessions:sessions.map(s=>({scheduleItemId:s.id,resourceId:s.resourceId,plannedStart:s.plannedStart,plannedEnd:s.plannedEnd,bufferAfterMinutes:s.bufferAfterMinutes,status:s.status,lockStatus:s.lockStatus,allocationMode:s.allocationMode,resourceResolutionStatus:s.resourceResolutionStatus,hasRunHistory:s.hasRunHistory})),
   progress:sessions.map(s=>({scheduleItemId:s.id,requestIds:s.requestIds,runs:s.runs,confirmedForecast:s.confirmedForecast??null}))};
 }
 function createBridge({endpoint,resources,fetchImpl=fetch}){
@@ -28,7 +28,7 @@ function createBridge({endpoint,resources,fetchImpl=fetch}){
   let writing=false;
   try{
    const owner=await session(auth);if(!owner)return {ok:false,code:'APPLICATION_SESSION_REQUIRED'};
-   if(action==='snapshot'&&exact(body,[])){const state=await call('/api/v3/business/state',auth);if(!state.ok)return state;return {ok:true,subjectId:owner.subjectId,state:chartState(state,resources)};}
+   if(action==='snapshot'&&exact(body,[])){const state=await call('/api/v3/business/state',auth);if(!state.ok)return state;if(state.principal?.subjectId!==owner.subjectId)return {ok:false,code:'APPLICATION_SESSION_CHANGED'};return {ok:true,subjectId:owner.subjectId,state:chartState(state,resources)};}
    if(action==='preview'){
     if(!exact(body,['input','baseRevisions'])||!inputValid(body.input)||!revisions(body.baseRevisions)||!resources.includes(body.input.resourceId))return {ok:false,code:'INVALID_CHART_EDIT'};
     const state=await call('/api/v3/business/state',auth);if(!state.ok)return state;

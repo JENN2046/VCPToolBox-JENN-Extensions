@@ -3,31 +3,43 @@ const fs=require('node:fs'),path=require('node:path'),{pathToFileURL,fileURLToPa
 const {createClient}=require('./client.cjs'),{same,revisions}=require('./bridge.cjs');
 const CHART='jso-local-candidate',UUID=/^[a-f0-9-]{36}$/;
 let singleton;
-async function createEditor({chartService,projectBasePath,config,app,BrowserWindow,env=process.env,client:providedClient,stateRoot}){
+async function createEditor({chartService,projectBasePath,config,app,BrowserWindow,env=process.env,client:providedClient,stateRoot,nativeCalendar=false}){
  const {installNativeConversationPort}=require(path.join(projectBasePath,'../modules/services/trustedConversation/nativePort.cjs'));
- const {runtime}=await import(pathToFileURL(path.join(__dirname,'runtime.mjs')));
+ const CHART=nativeCalendar?'jso-calendar-isolated':'jso-local-candidate';
+ const calendar=nativeCalendar?require('../JennPlannerNative/assets.cjs')():null;
+ const {runtime}=calendar||await import(pathToFileURL(path.join(__dirname,'runtime.mjs')));
  const targetHash=createHash('sha256').update(runtime).digest('hex');
  const client=providedClient||createClient({url:config.JSO_CHART_BRIDGE_URL,transportToken:env[config.JSO_CHART_TRANSPORT_TOKEN_ENV],authorization:env[config.JSO_CHART_APPLICATION_AUTHORIZATION_ENV]});
- const root=stateRoot||path.join(app.getPath('userData'),'JSOChartEditor'),file=path.join(root,'pending.json');
- const binding=createHash('sha256').update(config.JSO_CHART_BRIDGE_URL||'injected-isolated-client').digest('hex');
+ const root=stateRoot||path.join(app.getPath('userData'),nativeCalendar?'JSOCalendarEditor':'JSOChartEditor'),file=path.join(root,'pending.json');
+ const binding=createHash('sha256').update((config.JSO_CHART_BRIDGE_URL||'injected-isolated-client')+(nativeCalendar?'|'+CHART:'')).digest('hex');
  let pending=null,disposed=false,saving=false,projectQueue=Promise.resolve(),upgradeQueue=Promise.resolve(),readFlight=null,needsBootstrap=false;
- let readStatus={status:'reading',lastReadAt:null},readSequence=0;
+ let readStatus={status:'reading',lastReadAt:null},readSequence=0,confirmedFloor=null;
+ function acceptedReceipt(result,command){if(!result.ok||result.receipt?.operationId!==command.operationId)return false;if(!nativeCalendar)return true;const r=result.receipt;return r.kind==='dynamic-day-adjustment'&&r.actor?.subjectId===command.subjectId&&r.previewDigest===command.previewDigest&&revisions(r);}
+ function rememberReceipt(result){if(nativeCalendar)confirmedFloor={scheduleRevision:result.receipt.scheduleRevision,projectionRevision:result.receipt.projectionRevision};}
  const views=new Map(),ports=new Map();
  function persist(value){fs.mkdirSync(root,{recursive:true,mode:0o700});fs.writeFileSync(file+'.tmp',JSON.stringify(value),{mode:0o600});fs.renameSync(file+'.tmp',file);pending=value;}
  try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077))throw Error('CHART_JOURNAL_UNSAFE');const saved=JSON.parse(fs.readFileSync(file));if(saved&&saved.binding!==binding)throw Error('CHART_JOURNAL_BINDING_CHANGED');pending=saved;}catch(e){if(e.code!=='ENOENT')throw e;}
+ async function assertCalendarSource(){
+  if(!nativeCalendar)return;
+  for(const kind of ['runtime','template','style']){const source=await chartService.getSource(CHART,kind);if(source.hash!==calendar.hashes[kind])throw Error('CALENDAR_SOURCE_MISMATCH');}
+ }
  const page=path.resolve(projectBasePath,'../Chartmodules/chart.html');
  function owned(win){try{return !disposed&&!win.isDestroyed()&&new URL(win.webContents.getURL()).protocol==='file:'&&path.resolve(fileURLToPath(win.webContents.getURL()))===page;}catch{return false;}}
  async function tell(record,message){if(!record||!owned(record.win))return;await record.win.webContents.executeJavaScript(`window.__jsoChartEditor?.receive(${JSON.stringify({...message,viewId:record.viewId})})`).catch(()=>{});}
  async function project(state,isCurrent=()=>!disposed){
   if(!state?.ok||!revisions(state.revisions))return;
+  if(nativeCalendar&&(typeof state.ownerBinding!=='string'||!['enabled','disabled'].includes(state.writeAdmission)||(confirmedFloor&&['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<confirmedFloor[k]))))return false;
   const work=async()=>{if(disposed||!isCurrent())return;let manifest,prior;
-   const data={source:'JSO',projectionFormat:2,refreshMode:'authenticated-http-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision]};
+   const data={source:'JSO',projectionFormat:nativeCalendar?3:2,refreshMode:'authenticated-http-poll-5s',observedAt:new Date().toISOString(),businessTimeZone:state.activeConfig?.businessTimeZone,revisions:state.revisions,orders:state.orders,sessions:state.sessions,progress:state.progress,resources:state.resources,_nativeProjectionVersion:[state.revisions.scheduleRevision,state.revisions.projectionRevision],...(nativeCalendar?{businessToday:state.businessToday,writeAdmission:state.writeAdmission,ownerBinding:state.ownerBinding}:{})};
    try{manifest=await chartService.readManifest(CHART);prior=await chartService.readData(CHART);}
    catch(e){if(!['ENOENT','CHART_NOT_FOUND'].includes(e.code))throw e;if(!isCurrent())return;
-    await chartService.createChart({manifest:{id:CHART,name:'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:'<main></main>',style:'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return true;
+    await chartService.createChart({manifest:{id:CHART,name:nativeCalendar?'Jenn 拍摄排班 · 隔离候选':'JSO 拍摄排班',libraries:[],window:{width:1000,height:650}},template:calendar?.template||'<main></main>',style:calendar?.style||'main{font:16px sans-serif;padding:24px}',runtime,initialData:data,open:false});needsBootstrap=false;return true;
    }
-   if(['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return true;
-   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===2)return true;
+   await assertCalendarSource();
+   const sameNativeContext=!nativeCalendar||(prior.ownerBinding===data.ownerBinding&&prior.businessToday===data.businessToday&&prior.writeAdmission===data.writeAdmission);
+   if(nativeCalendar&&!sameNativeContext){for(const record of views.values()){record.generation++;record.previewId=null;ports.get(record.win.webContents.id)?.invalidate();}}
+   if((!nativeCalendar||prior.ownerBinding===data.ownerBinding)&&['scheduleRevision','projectionRevision'].some(k=>state.revisions[k]<(prior.revisions?.[k]??0)))return true;
+   if(same(prior.revisions,state.revisions)&&prior.projectionFormat===(nativeCalendar?3:2)&&sameNativeContext)return true;
    if(!isCurrent())return;
    await chartService.replaceData(CHART,data,{expectedDataRevision:manifest.dataRevision});return true;
   };
@@ -44,6 +56,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    result=await flight.promise;
    if(!isCurrent())return {ok:false,code:'CHART_VIEW_CLOSED'};
    if(result.ok&&await project(result.state,isCurrent))flight.projected=true;
+   if(nativeCalendar&&result.ok&&!flight.projected)result={ok:false,code:'CHART_PROJECTION_UNAVAILABLE'};
    if(sequence===readSequence&&(isCurrent()||flight.projected))readStatus={status:result.ok?'current':['TRANSPORT_AUTH_REQUIRED','APPLICATION_SESSION_REQUIRED','APPLICATION_SESSION_CHANGED'].includes(result.code)?'denied':'unavailable',lastReadAt:result.ok?new Date().toISOString():readStatus.lastReadAt};
   }catch{
    result={ok:false,code:'CHART_SERVICE_UNAVAILABLE'};
@@ -76,6 +89,16 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  async function upgrade(){
   if(disposed)return;
   try{const source=await chartService.getSource(CHART,'runtime');
+   if(nativeCalendar){
+    // Migrate only the exact previously shipped calendar, through ChartService
+    // so source history and revision checks remain authoritative.
+    if(source.hash!==targetHash){
+     if(source.hash!=='353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76')throw Error('CALENDAR_SOURCE_MISMATCH');
+     for(const kind of ['template','style'])if((await chartService.getSource(CHART,kind)).hash!==calendar.hashes[kind])throw Error('CALENDAR_SOURCE_MISMATCH');
+     await chartService.editSource(CHART,{file:'runtime',content:runtime,expectedCodeRevision:source.codeRevision});
+    }
+    await assertCalendarSource();return;
+   }
    // Only exact shipped templates; never replace a user's custom runtime.
    if(source.hash===targetHash)return;
    if(!KNOWN_RUNTIME_HASHES.includes(source.hash))return;
@@ -88,7 +111,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   if(!pending){const read=await refreshView(record);await tell(record,{kind:'result',message:read.ok?'已读取 JSO 最新安排。':'暂未取回 JSO 最新安排，当前显示保留。'});return;}
   if(saving){await tell(record,{kind:'result',unknown:true,message:'保存仍在处理中，请稍后核对原操作。'});return;}
   const result=await client.call('recover',{operationId:pending.command.operationId,subjectId:pending.command.subjectId});
-  if(result.ok&&result.receipt?.operationId===pending.command.operationId){persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'原保存已确认，已回读 JSO。':'原保存已确认，暂未取回最新显示。'});}
+  if(acceptedReceipt(result,pending.command)){rememberReceipt(result);persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'原保存已确认，已回读 JSO。':'原保存已确认，暂未取回最新显示。'});}
   else await tell(record,{kind:'result',unknown:true,message:'原保存结果仍待核对；未再次提交。'});
  }
  function presentation(result,data){
@@ -97,6 +120,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   for(const c of p.changes){const progress=data.progress.find(item=>item.scheduleItemId===c.after.scheduleItemId),name=(progress?.requestIds||[]).map(id=>data.orders.find(order=>order.id===id)?.name||'拍摄场次').join('、')||'拍摄场次';lines.push(name+': '+fmt(c.before.plannedStart)+' — '+fmt(c.before.plannedEnd)+' → '+fmt(c.after.plannedStart)+' — '+fmt(c.after.plannedEnd));}
   if(p.forecast)lines.push('预计结束 → '+fmt(p.forecast.estimatedEnd));
   for(const item of [...p.warnings,...p.unresolved])lines.push('需核对：'+item.code);
+  if(nativeCalendar)for(const c of p.changes)lines.push('场次 '+c.after.scheduleItemId+'；缓冲 '+c.before.bufferAfterMinutes+' → '+c.after.bufferAfterMinutes+' 分钟');
   lines.push('排程 '+p.expectedScheduleRevision+' / 投影 '+p.expectedProjectionRevision);return lines.join('\n');
  }
  async function handle(event){
@@ -107,6 +131,7 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
   if(p.kind==='close'){const prior=views.get(p.viewId);if(prior){prior.generation++;prior.previewId=null;ports.get(prior.win.webContents.id)?.invalidate();views.delete(p.viewId);}return;}
   const win=await locate(p.viewId);if(!win)return;attach(win);
   if((await chartService.getSource(CHART,'runtime')).hash!==targetHash)return;
+  await assertCalendarSource();
   let record=views.get(p.viewId);
   if(p.kind==='ready'){
    if(views.size>=16)return;record={viewId:p.viewId,win,generation:0};views.set(p.viewId,record);
@@ -123,11 +148,12 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    if(!result.ok){await refreshView(record);await tell(record,{kind:'preview',requestId:p.requestId,ok:false,message:'预览未完成：'+result.code+'。请重新拖动核对。'});return;}
    const displayedData=await chartService.readData(CHART);
    if(!await currentRecord(record)||generation!==record.generation)return;
-   record.previewId=randomUUID();record.presentation=presentation(result,displayedData);record.base={scheduleRevision:result.preview.expectedScheduleRevision,projectionRevision:result.preview.expectedProjectionRevision};
+   record.previewId=randomUUID();record.canApply=result.preview.canApply;record.presentation=presentation(result,displayedData);record.base={scheduleRevision:result.preview.expectedScheduleRevision,projectionRevision:result.preview.expectedProjectionRevision};
    record.command={operationId:'CHART-'+randomUUID(),subjectId:result.subjectId,input:result.preview.input,previewDigest:result.previewDigest};
-   await tell(record,{kind:'preview',requestId:p.requestId,ok:true,canApply:result.preview.canApply,previewId:record.previewId,presentation:record.presentation});return;
+   await tell(record,{kind:'preview',requestId:p.requestId,ok:true,canApply:result.preview.canApply,...(nativeCalendar?{preview:result.preview}:{}),previewId:record.previewId,presentation:record.presentation});return;
   }
-  if(p.kind!=='save'||p.previewId!==record.previewId||!record.command||saving||pending||record.saving)return;
+  if(p.kind!=='save')return;
+  if((nativeCalendar&&!record.canApply)||p.previewId!==record.previewId||!record.command||saving||pending||record.saving){if(nativeCalendar)await tell(record,{kind:'result',unknown:Boolean(pending||saving),message:'预览、身份或保存状态已变化，请重新核对原操作。'});return;}
   // Freeze the exact preview that the physical event authorized before any
   // await. A cancel/replacement cannot redirect this Save to another command.
   const command=structuredClone(record.command),base={...record.base},generation=record.generation,previewId=record.previewId;
@@ -138,16 +164,18 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
    if(!context||!unchanged()||!await currentRecord(record)||!same((await chartService.readData(CHART)).revisions,base)||!unchanged()){
     await tell(record,{kind:'result',message:'安排、预览或窗口已变化，本次未提交，请重新拖动核对。'});return;
    }
+   await assertCalendarSource();
+   if(!unchanged()||!await currentRecord(record))return;
    record.previewId=null;
    persist({binding,command});
    const result=await client.call('apply',command);
-   if(result.ok&&result.receipt?.operationId===command.operationId){persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'已保存到 JSO，并回读最新安排。':'JSO 已确认保存，暂未取回最新显示。'});}
+   if(acceptedReceipt(result,command)){rememberReceipt(result);persist(null);const read=await refreshView(record,true);await tell(record,{kind:'result',message:read.ok?'已保存到 JSO，并回读最新安排。':'JSO 已确认保存，暂未取回最新显示。'});}
    else if(result.ok||result.code==='RESULT_UNKNOWN'){await tell(record,{kind:'result',unknown:true,message:'保存结果待核对，未重复提交。请点“核对保存结果”。'});}
    else{persist(null);await refreshView(record);await tell(record,{kind:'result',message:'未保存：'+(result.code||'RESPONSE_INVALID')+'。请重新拖动核对。'});}
   }catch{await tell(record,{kind:'result',unknown:!!pending,message:pending?'保存结果待核对；未重复提交。':'本次未提交，请稍后重新读取。'});}
   finally{saving=false;record.saving=false;}
  }
- const onEvent=event=>{void handle(event).catch(()=>{});};
+ const onEvent=event=>{void handle(event).catch(async()=>{if(nativeCalendar){const r=views.get(event?.payload?.viewId);if(r){r.generation++;r.previewId=null;ports.get(r.win.webContents.id)?.invalidate();await tell(r,{kind:'result',unknown:!!pending,message:pending?'保存结果待核对；未重复提交。':'图表源码或状态已变化，本次未提交，请重新打开。'});}}});};
  const created=(_event,win)=>{win.webContents.once('did-finish-load',()=>attach(win));};
  chartService.on('runtime-event',onEvent);chartService.on('change',onChange);app.on('browser-window-created',created);
  for(const win of BrowserWindow.getAllWindows())attach(win);

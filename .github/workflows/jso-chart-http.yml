@@ -6,8 +6,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ClientPlugins/JsoChartEditor/**
+      - ClientPlugins/JennPlannerNative/**
       - Plugin/JsoChartBridge/**
       - ShootingOperationsPackages/JsoChartEditor/**
+      - ShootingOperationsPackages/JennPlannerNative/**
       - .github/workflows/jso-chart-http.yml
   workflow_dispatch:
 
@@ -24,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: JENN2046/VCPChat
-          ref: 5af217ad99091e673060c2540ebf8db5bda69223
+          ref: ff064b8222789589c799751b24ba6bb4cec8e0f1
           path: .test-host
       - uses: actions/setup-node@v4
         with:
@@ -34,4 +36,4 @@ jobs:
       - name: Run editor and Save concurrency tests against merged Chat
         env:
           JSO_CHART_TEST_CHAT_ROOT: ${{ github.workspace }}/.test-host
-        run: NODE_PATH="$RUNNER_TEMP/jso-chart-tests/node_modules" node --test ShootingOperationsPackages/JsoChartEditor/*.test.cjs
+        run: NODE_PATH="$RUNNER_TEMP/jso-chart-tests/node_modules" node --test ShootingOperationsPackages/JsoChartEditor/*.test.cjs ShootingOperationsPackages/JennPlannerNative/*.test.cjs
