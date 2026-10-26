@@ -1,0 +1,83 @@
+name: JSO Agent paired profile v1
+
+on:
+  workflow_call:
+    inputs:
+      harness_sha:
+        description: Exact Extensions harness SHA; external callers must match their immutable uses SHA.
+        type: string
+        required: true
+      mode:
+        type: string
+        required: true
+      candidate_component:
+        type: string
+        default: ''
+      candidate_repository:
+        type: string
+        default: ''
+      candidate_sha:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Reject moving harness refs before checkout
+        env:
+          HARNESS_SHA: ${{ inputs.harness_sha }}
+        run: python3 -c 'import os,re; assert re.fullmatch("[0-9a-f]{40}",os.environ["HARNESS_SHA"])'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: JENN2046/VCPToolBox-JENN-Extensions
+          ref: ${{ inputs.harness_sha }}
+          path: harness
+          persist-credentials: false
+          sparse-checkout: |
+            integrations/jso-agent
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.1
+      - id: node22
+        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.21.0
+      - id: node24
+        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
+      - name: Test manifest, substitution and skip-failure rules
+        run: node --test harness/integrations/jso-agent/ci.test.mjs
+      - name: Run canonical paired profile
+        env:
+          MODE: ${{ inputs.mode }}
+          CANDIDATE_COMPONENT: ${{ inputs.candidate_component }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          NODE22: ${{ steps.node22.outputs.binary }}
+          NODE24: ${{ steps.node24.outputs.binary }}
+        shell: bash
+        run: |
+          args=(--mode "$MODE" --out "$GITHUB_WORKSPACE/paired-results" --workspace "$RUNNER_TEMP/jso-agent-sources" --node22 "$NODE22" --node24 "$NODE24")
+          if [[ "$MODE" == candidate ]]; then
+            args+=(--candidate-component "$CANDIDATE_COMPONENT" --candidate-repository "$CANDIDATE_REPOSITORY" --candidate-sha "$CANDIDATE_SHA")
+          fi
+          node harness/integrations/jso-agent/run.mjs "${args[@]}"
+      - name: Prove required real stdio skips fail the gate
+        if: inputs.mode == 'accepted'
+        env:
+          NODE24: ${{ steps.node24.outputs.binary }}
+        run: node harness/integrations/jso-agent/verify-required-skip.mjs "$GITHUB_WORKSPACE/paired-results" "$RUNNER_TEMP/jso-agent-sources" "$NODE24" "$GITHUB_WORKSPACE/skip-negative-control"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: jso-agent-${{ inputs.mode }}-${{ inputs.candidate_component || 'frozen' }}
+          path: |
+            paired-results
+            skip-negative-control
+          if-no-files-found: warn
+          retention-days: 14

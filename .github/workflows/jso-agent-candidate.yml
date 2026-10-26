@@ -1,0 +1,28 @@
+name: JSO Agent Extensions candidate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jso-agent-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [accepted, candidate]
+    uses: ./.github/workflows/jso-agent-paired.yml
+    with:
+      harness_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      mode: ${{ matrix.mode }}
+      candidate_component: ${{ matrix.mode == 'candidate' && 'extensions' || '' }}
+      candidate_repository: ${{ matrix.mode == 'candidate' && 'JENN2046/VCPToolBox-JENN-Extensions' || '' }}
+      candidate_sha: ${{ matrix.mode == 'candidate' && (github.event.pull_request.head.sha || github.sha) || '' }}
