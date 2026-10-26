@@ -57,8 +57,9 @@ export function validateManifest(manifest, directory = ROOT) {
   requireValue(Array.isArray(profile.groups) && profile.groups.length === 4, 'profile requires four groups');
   const groups = new Set();
   for (const group of profile.groups) {
-    keys(group, ['component','runtime','files'], 'profile group');
+    keys(group, ['component','runtime','files','checkoutTextMode'], 'profile group');
     requireValue(seen.has(group.component) && !groups.has(group.component), 'duplicate/unknown profile group'); groups.add(group.component);
+    requireValue(group.checkoutTextMode === (group.component === 'vcpchat' ? 'git-crlf' : 'git-lf'), 'unsupported checkout text mode');
     requireValue(group.runtime === (['extensions','jso'].includes(group.component) ? 'node24' : 'node22'), 'wrong component runtime');
     requireValue(Array.isArray(group.files) && group.files.length > 0 && new Set(group.files).size === group.files.length, 'empty/duplicate required tests');
     requireValue(group.files.every(f => typeof f === 'string' && /^(tests|ShootingOperationsPackages)\/[A-Za-z0-9_./-]+\.(test\.(cjs|mjs)|cjs)$/.test(f)

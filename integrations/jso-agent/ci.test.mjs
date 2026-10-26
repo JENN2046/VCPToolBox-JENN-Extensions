@@ -78,3 +78,9 @@ test('profile includes real cross-process and cross-repository tests, not only u
   assert.ok(profile.groups.find(g=>g.component==='jso').files.includes('tests/jso-conversation-r1.test.mjs'));
   assert.ok(profile.groups.find(g=>g.component==='jso').files.includes('tests/jso-conversation-cancellation-restart.test.mjs'));
 });
+
+test('malformed counts fail closed and cannot produce null/NaN receipt counts',()=>{
+ const events=[{type:'test:pass',data:{name:'actual test',file:'/synthetic/a.test.cjs',line:3,testType:'test'}},{type:'test:summary',data:{success:true,counts:{tests:1}}}];
+ const result=assessEvents(events,0,['a.test.cjs'],'/synthetic');assert.equal(result.status,'FAIL');
+ assert.ok(result.gateFailures.includes('invalid test accounting'));assert.ok(Object.values(result.counts).every(Number.isSafeInteger));
+});

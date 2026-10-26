@@ -19,7 +19,8 @@
         "ShootingOperationsPackages/JsoConversation/limits.test.cjs",
         "ShootingOperationsPackages/JsoConversation/races.test.cjs",
         "ShootingOperationsPackages/JsoConversation/stdio.test.cjs"
-      ]
+      ],
+      "checkoutTextMode": "git-lf"
     },
     {
       "component": "vcpchat",
@@ -34,7 +35,8 @@
         "tests/native-send-preflight.test.cjs",
         "tests/native-result-delivery.test.cjs",
         "tests/native-markdown-proposals.test.cjs"
-      ]
+      ],
+      "checkoutTextMode": "git-crlf"
     },
     {
       "component": "vcptoolbox",
@@ -45,7 +47,8 @@
         "tests/native-websocket.test.cjs",
         "tests/native-http-contract.test.cjs",
         "tests/native-transport-diagnostics.test.cjs"
-      ]
+      ],
+      "checkoutTextMode": "git-lf"
     },
     {
       "component": "jso",
@@ -61,7 +64,8 @@
         "tests/conversation-static-grants.test.mjs",
         "tests/conversation-startup-policy.test.mjs",
         "tests/conversation-kiosk-binding.test.mjs"
-      ]
+      ],
+      "checkoutTextMode": "git-lf"
     }
   ],
   "invariants": {

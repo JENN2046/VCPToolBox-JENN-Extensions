@@ -2,6 +2,7 @@
 // Consume Node's test event stream, not human-formatted TAP or log text.
 module.exports = async function* (source) {
   for await (const event of source) {
+    if (['test:stdout','test:stderr'].includes(event.type)) { yield JSON.stringify(event) + '\n'; continue; }
     if (['test:pass','test:fail','test:summary'].includes(event.type)) {
       const d = event.data;
       yield JSON.stringify({type:event.type, data:{name:d.name, file:d.file, line:d.line,

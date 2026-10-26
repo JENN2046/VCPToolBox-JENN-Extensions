@@ -37,7 +37,11 @@ existing boundary; it does not claim that Batch 2's public contract is delivered
 Chat and ToolBox tests run on **Node 22.23.1**, matching their existing native CI
 lanes. Extensions uses **24.21.0**, as its existing JSO workflow does. JSO uses
 **24.21.0**, satisfying its declared `>=24.16.0` requirement and existing current CI.
-Both binaries must be supplied; exact versions are checked and recorded. One
+The Chat profile declares `git-crlf`: its existing renderer-hook test searches
+for CRLF text. Provisioning uses normal `git config core.autocrlf true` before
+checkout, as a Windows Git checkout would. Git objects/HEAD and normalized working
+tree cleanliness remain unchanged; no source/test is patched or excluded.
+The other checkouts use LF. Both binaries must be supplied; exact versions are checked and recorded. One
 runtime is not silently used for every repository.
 
 Cross-repository fixture references are always supplied:
@@ -57,8 +61,8 @@ are trusted test code, not an OS sandbox for adversarial code.
 
 Provisioning fetches exact public GitHub commits, locked npm test dependencies,
 and JSO's own locked dependencies with lifecycle scripts disabled. The isolated
-CJS dependency lock contains only the Express/WS versions used by the accepted
-ToolBox lockfile; no Electron/Rust build is required. Dependency/runtime download
+CJS dependency lock contains the Express/WS versions from the accepted
+ToolBox lockfile and jsdom from the accepted Chat lockfile; no Electron/Rust build is required. Dependency/runtime download
 is CI setup, not a live network dependency of the test scenarios. Test logs and
 receipts must not be used to store production credentials.
 
@@ -94,7 +98,8 @@ A provision workspace must be new; existing directories are never overwritten.
 For already prepared isolated checkouts, replace `--workspace` with
 `--roots-file roots.json --deps /absolute/isolated-deps/node_modules`. `roots.json`
 must map exactly `extensions`, `vcpchat`, `vcptoolbox`, `jso` to clean checkout roots;
-JSO's own `npm ci --ignore-scripts` must already have run. No live runtime trees.
+Chat must use the declared Git CRLF checkout mode, and JSO's own
+`npm ci --ignore-scripts` must already have run. No live runtime trees.
 
 `paired-result.v1.json` records release/candidate/harness identity, every actual
 source SHA, contracts/profile versions, per-component Node version, pass/fail/

@@ -9,7 +9,7 @@ const CHECKOUT_PATHS = {
   extensions:['ShootingOperationsPackages','Plugin/JennShootingOperations'],
   vcpchat:['tests','modules','preloads','VCPDistributedServer/Plugin/ChartController','vendor'],
   vcptoolbox:['tests','modules','routes','Plugin'],
-  jso:['tests','src','contracts','fixtures','examples','public','scripts'],
+  jso:['tests','src','contracts','fixtures','examples','public','scripts','docs/operations'],
 };
 export function cleanEnv(home, node, extra = {}) {
   return {PATH:dirname(node) + delimiter + '/usr/bin' + delimiter + '/bin', HOME:home,
@@ -39,7 +39,8 @@ function provision(plan, workspace, nodes, env) {
   for (const c of plan) {
     const root = join(workspace, c.component); mkdirSync(root); roots[c.component] = root;
     for (const args of [
-      ['init','-q'], ['remote','add','origin',`https://github.com/${c.repository}.git`],
+      ['init','-q'], ['config','core.autocrlf',c.component === 'vcpchat' ? 'true' : 'false'],
+      ['remote','add','origin',`https://github.com/${c.repository}.git`],
       ['-c','credential.helper=','fetch','--depth=1','--filter=blob:none','origin',c.sha],
       ['sparse-checkout','init','--cone'], ['sparse-checkout','set',...CHECKOUT_PATHS[c.component]],
       ['checkout','--detach',c.sha],
@@ -57,11 +58,15 @@ export function assessEvents(events, exitCode, requiredFiles, root) {
   const relativeFile = file => file ? relative(root, resolve(file)).replaceAll('\\','/') : null;
   const summaries = events.filter(e => e.type === 'test:summary' && !e.data.file);
   const summary = summaries.length === 1 ? summaries[0].data : null;
-  const counts = summary?.counts || {tests:0,passed:0,failed:0,cancelled:0,skipped:0,todo:0};
+  const rawCounts = summary?.counts || {};
+  const countKeys = ['tests','passed','failed','cancelled','skipped','todo'];
+  const validCounts = countKeys.every(k => Number.isSafeInteger(rawCounts[k]) && rawCounts[k] >= 0);
+  const counts = Object.fromEntries(countKeys.map(k=>[k,Number.isSafeInteger(rawCounts[k]) && rawCounts[k] >= 0 ? rawCounts[k] : 0]));
   const failures = [];
   if (exitCode !== 0) failures.push('test process failed');
   if (!summary || !summary.success) failures.push('missing/unsuccessful root test summary');
-  if (counts.tests < 1) failures.push('no tests ran');
+  if (!validCounts) failures.push('invalid test accounting');
+  if (!(counts.tests >= 1)) failures.push('no tests ran');
   for (const kind of ['failed','cancelled','skipped','todo']) if (counts[kind]) failures.push(`required tests ${kind}: ${counts[kind]}`);
   for (const file of requiredFiles) {
     const hasTest = events.some(e => ['test:pass','test:fail'].includes(e.type) && e.data.testType === 'test'
@@ -96,7 +101,7 @@ export function pairedReceipt({manifest, profile, plan, candidate, harnessSha, g
     trustedActionContract:manifest?.trustedActionContract || null,jsoAgentApiContract:manifest?.jsoAgentApiContract || null,
     profile:profile ? {id:profile.id,version:profile.version,sha256:manifest.testProfile.sha256}:null,
     counts,skipped:groups.flatMap(g=>g.skipped.map(s=>({component:g.component,...s}))),groups,
-    gateFailures:[...errors,...(!complete?['incomplete four-component execution']:[])],
+    gateFailures:[...errors,...groups.flatMap(g=>g.gateFailures.map(message=>`${g.component}: ${message}`)),...(!complete?['incomplete four-component execution']:[])],
     evidenceClass:'synthetic-isolated-paired-tests',productionAuthorization:false,finishedAt:new Date().toISOString()};
 }
 export async function runPaired(options) {
@@ -128,7 +133,10 @@ export async function runPaired(options) {
       requireValue(Object.keys(roots).sort().join(',') === Object.keys(COMPONENTS).sort().join(','), 'roots map must contain exactly four components');
       for (const key of Object.keys(roots)) roots[key] = resolve(roots[key]);
     }
-    for (const c of plan) { verifyCheckout(roots[c.component],c.sha); requireValue(outside(roots[c.component],out), 'output must be outside source checkouts'); }
+    for (const c of plan) {
+      verifyCheckout(roots[c.component],c.sha); requireValue(outside(roots[c.component],out), 'output must be outside source checkouts');
+      if (c.component === 'vcpchat') requireValue(git(roots[c.component],['config','--get','core.autocrlf']) === 'true', 'Chat renderer fixture requires declared Git CRLF checkout');
+    }
     for (const [name,version] of Object.entries(JSON.parse(readFileSync(join(ROOT,'deps/package.json'))).dependencies)) {
       requireValue(JSON.parse(readFileSync(join(deps,name,'package.json'))).version === version, 'wrong/missing isolated test dependency');
     }
@@ -147,7 +155,7 @@ export async function runPaired(options) {
       const env = cleanEnv(home,node,{NODE_PATH:deps,JSO_TOOLBOX_SOURCE:roots.vcptoolbox,JSO_TOOLBOX_ROOT:roots.vcptoolbox,
         JSO_CHAT_SOURCE:roots.vcpchat,JSO_EXTENSIONS_ROOT:roots.extensions,JSO_VCHART_AUTHOR_SOURCE:author});
       const result = runTestGroup({node,root,files:group.files,env,output:join(out,group.component)});
-      groups.push({component:group.component,runtime:versions[group.runtime],requiredFiles:group.files,...result});
+      groups.push({component:group.component,runtime:versions[group.runtime],checkoutTextMode:group.checkoutTextMode,requiredFiles:group.files,...result});
       console.log(JSON.stringify({component:group.component,status:result.status,counts:result.counts}));
     }
     for (const c of plan) verifyCheckout(roots[c.component],c.sha);

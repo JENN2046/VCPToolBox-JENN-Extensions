@@ -2,6 +2,10 @@
   "name": "jso-agent-paired-test-dependencies",
   "version": "1.0.0",
   "private": true,
-  "description": "Only the npm dependencies exercised by the pinned ToolBox native transport tests; versions from its accepted lockfile.",
-  "dependencies": { "express": "5.1.0", "ws": "8.21.0" }
+  "description": "Isolated native test dependencies at the accepted ToolBox and Chat lockfile versions.",
+  "dependencies": {
+    "express": "5.1.0",
+    "ws": "8.21.0",
+    "jsdom": "27.4.0"
+  }
 }
