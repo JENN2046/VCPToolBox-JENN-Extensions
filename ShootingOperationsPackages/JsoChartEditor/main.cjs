@@ -89,7 +89,16 @@ async function createEditor({chartService,projectBasePath,config,app,BrowserWind
  async function upgrade(){
   if(disposed)return;
   try{const source=await chartService.getSource(CHART,'runtime');
-   if(nativeCalendar){await assertCalendarSource();return;}
+   if(nativeCalendar){
+    // Migrate only the exact previously shipped calendar, through ChartService
+    // so source history and revision checks remain authoritative.
+    if(source.hash!==targetHash){
+     if(source.hash!=='353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76')throw Error('CALENDAR_SOURCE_MISMATCH');
+     for(const kind of ['template','style'])if((await chartService.getSource(CHART,kind)).hash!==calendar.hashes[kind])throw Error('CALENDAR_SOURCE_MISMATCH');
+     await chartService.editSource(CHART,{file:'runtime',content:runtime,expectedCodeRevision:source.codeRevision});
+    }
+    await assertCalendarSource();return;
+   }
    // Only exact shipped templates; never replace a user's custom runtime.
    if(source.hash===targetHash)return;
    if(!KNOWN_RUNTIME_HASHES.includes(source.hash))return;

@@ -3,14 +3,16 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {createCalendar}=require('./main.cjs'),calendar=require('./assets.cjs')(),{stage}=require('./stage-client.cjs');
 const viewId='00000000-0000-4000-8000-000000000005';
 const chatRoot=path.resolve(process.env.JSO_CHART_TEST_CHAT_ROOT||path.resolve(__dirname,'../../../chat-http-baseline'));
-async function fixture(t,priorChange={},nextChange={}){
+async function fixture(t,priorChange={},nextChange={},sourceChange={}){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'jso-native-context-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const base={ok:true,source:'JSO',projectionFormat:3,ownerBinding:'["synthetic-owner",["R"]]',businessToday:'2040-01-01',writeAdmission:'enabled',revisions:{scheduleRevision:5,projectionRevision:8},orders:[],sessions:[],progress:[],resources:[]};
  let prior={...structuredClone(base),...priorChange},next={...structuredClone(base),activeConfig:{businessTimeZone:'Asia/Shanghai'},...nextChange},dataRevision=2,writes=0,applyCalls=0,applyResponse=()=>({ok:false,code:'SYNTHETIC_NO_WRITE'});
  const events=[],wc=new EventEmitter();wc.id=1;wc.getURL=()=>pathToFileURL(path.join(chatRoot,'Chartmodules/chart.html')).href;wc.executeJavaScript=async code=>vm.runInNewContext(code,{window:{__jsoChartEditor:{viewId,receive:m=>events.push(m),proof:()=>{const p=events.findLast(x=>x.kind==='preview');return {eligible:Boolean(p?.previewId),text:p?.previewId,conversationId:viewId};}}},document:{querySelector:()=>({textContent:events.findLast(x=>x.kind==='preview')?.presentation})}});
  const win={webContents:wc,isDestroyed:()=>false,isFocused:()=>true},service=new EventEmitter();
  service.readManifest=async()=>({id:'jso-calendar-isolated',codeRevision:1,dataRevision});service.readData=async()=>structuredClone(prior);
- service.getSource=async(_id,kind)=>({hash:calendar.hashes[kind],codeRevision:1});
+ const sourceHashes={...calendar.hashes,...sourceChange};let sourceEdits=0,codeRevision=1;
+ service.getSource=async(_id,kind)=>({hash:sourceHashes[kind],codeRevision});
+ service.editSource=async(id,edit)=>{assert.equal(id,'jso-calendar-isolated');assert.equal(edit.expectedCodeRevision,codeRevision);assert.equal(edit.file,'runtime');assert.equal(edit.content,calendar.runtime);sourceHashes.runtime=require('node:crypto').createHash('sha256').update(edit.content).digest('hex');sourceEdits++;codeRevision++;};
  service.replaceData=async(id,data,options)=>{assert.equal(id,'jso-calendar-isolated');assert.equal(options.expectedDataRevision,dataRevision);prior=structuredClone(data);dataRevision++;writes++;};
  const input={scheduleItemId:'S',resourceId:'R',mode:'plan',plannedStart:'2040-01-01T01:15:00.000Z',endAt:'2040-01-01T01:45:00.000Z',bufferAfterMinutes:20};
  const client={call:async(action,body)=>{
@@ -21,8 +23,16 @@ async function fixture(t,priorChange={},nextChange={}){
  }};
  const app=new EventEmitter(),editor=await createCalendar({chartService:service,projectBasePath:path.join(chatRoot,'VCPDistributedServer'),config:{},app,BrowserWindow:{getAllWindows:()=>[win]},client,stateRoot:root});t.after(()=>editor.shutdown());
  const handle=payload=>editor.handle({chartId:'jso-calendar-isolated',name:'jso-editor',payload:{viewId,...payload}});
- return {editor,handle,events,input,root,set(change){next={...next,...change};},data:()=>structuredClone(prior),writes:()=>writes,applyCalls:()=>applyCalls,setApply:fn=>{applyResponse=fn;},pressEnter:()=>wc.emit('before-input-event',{}, {type:'keyDown',key:'Enter',shift:false,isComposing:false,isAutoRepeat:false})};
+ return {editor,handle,events,input,root,set(change){next={...next,...change};},data:()=>structuredClone(prior),writes:()=>writes,sourceEdits:()=>sourceEdits,applyCalls:()=>applyCalls,setApply:fn=>{applyResponse=fn;},pressEnter:()=>wc.emit('before-input-event',{}, {type:'keyDown',key:'Enter',shift:false,isComposing:false,isAutoRepeat:false})};
 }
+test('only exact previous native calendar migrates through revision-checked source editing',async t=>{
+ const f=await fixture(t,{}, {},{runtime:'353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76'});
+ assert.equal(f.sourceEdits(),1);assert.equal(f.writes(),0);assert.equal(f.applyCalls(),0);
+ await f.editor.refresh();assert.equal(f.sourceEdits(),1);
+});
+test('custom runtime or changed template/style refuses native migration',async t=>{
+ for(const source of [{runtime:'a'.repeat(64)},{runtime:'353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76',template:'b'.repeat(64)},{runtime:'353707eee8dd5487f566bf71795cf71dd0be0c6e2a30fcd4c263e4e1d191be76',style:'c'.repeat(64)}])await assert.rejects(fixture(t,{}, {},source),/CALENDAR_SOURCE_MISMATCH/);
+});
 for(const [name,change] of [['business date',{businessToday:'2040-01-02'}],['write admission',{writeAdmission:'disabled'}],['Owner binding',{ownerBinding:'["different-owner",["R"]]'}]])test(`same revisions refresh changed ${name}`,async t=>{
  const f=await fixture(t,{},change);assert.equal(f.writes(),1);for(const [key,value] of Object.entries(change))assert.equal(f.data()[key],value);
 });

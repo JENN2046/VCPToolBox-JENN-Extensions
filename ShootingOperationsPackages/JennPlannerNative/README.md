@@ -4,6 +4,8 @@ This opt-in client packages the native calendar already verified in the developm
 
 `artifact/` contains the exact installed calendar's reviewable template, CSS and JavaScript snapshot. `artifact.json` pins their SHA-256 hashes; `assets.cjs` rejects mismatches. These are versioned source files, not a promise that they are regenerated from the latest JSO webpage. The source snapshot uses 15-minute drag increments and same-date moves; it does not add a five-minute mode.
 
+The renderer clears its initial reading message after an authenticated successful read and preserves active-save, preview and unknown-result messages during background reads. This revision migrates only the exact previously shipped runtime (`353707ee…`) with unchanged pinned template/CSS, using ChartService's code-revision check and source-history backup. Custom or mismatched source is refused. Business data and the recovery journal are retained.
+
 ## Stage a new plugin directory
 
 ```sh

@@ -775,8 +775,8 @@ function createNativeCalendar({emit,onChange,viewId}){
    if(this.closed||m.viewId!==viewId)return;
    if(m.kind==='read-status'){
     if(m.status==='denied')this.clearAuthentication();
-    else if(m.status==='unavailable'){this.message='暂未取回最新安排，当前显示可能过期。';this.changed();}
-    else if(m.status==='current'){this.denied=false;if(this.message.startsWith('读取被拒')||this.message.startsWith('暂未取回'))this.message='已读取 JSO 最新排期。';if(this.lastData)this.update(this.lastData);}return;
+    else if(m.status==='unavailable'&&!this.pending&&!this.busy&&!this.preview){this.message='暂未取回最新安排，当前显示可能过期。';this.changed();}
+    else if(m.status==='current'){this.denied=false;if(!this.pending&&!this.busy&&!this.preview&&(this.message==='正在读取 JSO…'||this.message.startsWith('读取被拒')||this.message.startsWith('暂未取回')))this.message='已读取 JSO 最新排期。';if(this.lastData)this.update(this.lastData);else this.changed();}return;
    }
    if(m.kind==='preview'&&m.requestId===this.requestId){
     this.busy=false;
