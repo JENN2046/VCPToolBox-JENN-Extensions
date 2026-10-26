@@ -77,7 +77,13 @@ jobs:
         with:
           name: jso-agent-${{ inputs.mode }}-${{ inputs.candidate_component || 'frozen' }}
           path: |
-            paired-results
-            skip-negative-control
+            paired-results/paired-result.v1.json
+            paired-results/chart-author-source.json
+            paired-results/extensions
+            paired-results/vcpchat
+            paired-results/vcptoolbox
+            paired-results/jso
+            skip-negative-control/paired-result.v1.json
+            skip-negative-control/extensions
           if-no-files-found: warn
           retention-days: 14
