@@ -35,7 +35,8 @@ existing boundary; it does not claim that Batch 2's public contract is delivered
 ## Runtimes and fixtures
 
 Chat and ToolBox tests run on **Node 22.23.1**, matching their existing native CI
-lanes. Extensions uses **24.21.0**, as its existing JSO workflow does. JSO uses
+lanes. The Extensions backend adapter/stdio tests also use **22.23.1**, the
+ToolBox host runtime; its separate chart-editor workflow is unchanged. JSO uses
 **24.21.0**, satisfying its declared `>=24.16.0` requirement and existing current CI.
 The Chat profile declares `git-crlf`: its existing renderer-hook test searches
 for CRLF text. Provisioning uses normal `git config core.autocrlf true` before
@@ -99,7 +100,9 @@ For already prepared isolated checkouts, replace `--workspace` with
 `--roots-file roots.json --deps /absolute/isolated-deps/node_modules`. `roots.json`
 must map exactly `extensions`, `vcpchat`, `vcptoolbox`, `jso` to clean checkout roots;
 Chat must use the declared Git CRLF checkout mode, and JSO's own
-`npm ci --ignore-scripts` must already have run. No live runtime trees.
+`npm ci --ignore-scripts` must already have run. No live runtime trees. Existing JSO fixture code uses URL.pathname for its
+node_modules symlink: use an ASCII source path without spaces (as in the examples
+and GitHub runners). This prerequisite is checked; the JSO fixture is not patched.
 
 `paired-result.v1.json` records release/candidate/harness identity, every actual
 source SHA, contracts/profile versions, per-component Node version, pass/fail/

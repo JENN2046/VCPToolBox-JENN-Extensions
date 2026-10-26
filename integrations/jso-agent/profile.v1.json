@@ -9,7 +9,7 @@
   "groups": [
     {
       "component": "extensions",
-      "runtime": "node24",
+      "runtime": "node22",
       "files": [
         "ShootingOperationsPackages/JsoAgentAdapter/config.test.cjs",
         "ShootingOperationsPackages/JsoAgentAdapter/test.cjs",

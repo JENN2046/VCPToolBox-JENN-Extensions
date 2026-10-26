@@ -135,7 +135,9 @@ export async function runPaired(options) {
     }
     for (const c of plan) {
       verifyCheckout(roots[c.component],c.sha); requireValue(outside(roots[c.component],out), 'output must be outside source checkouts');
-      if (c.component === 'vcpchat') requireValue(git(roots[c.component],['config','--get','core.autocrlf']) === 'true', 'Chat renderer fixture requires declared Git CRLF checkout');
+      if (c.component === 'vcpchat') requireValue(git(roots[c.component],['config','--get','core.autocrlf']) === 'true'
+        && git(roots[c.component],['ls-files','--eol','modules/renderer/streamManager.js']).includes('w/crlf'), 'Chat renderer fixture requires a fresh Git CRLF checkout');
+      if (c.component === 'jso') requireValue(pathToFileURL(roots[c.component]).pathname === roots[c.component], 'existing JSO fixture uses URL.pathname: use an ASCII source path without spaces');
     }
     for (const [name,version] of Object.entries(JSON.parse(readFileSync(join(ROOT,'deps/package.json'))).dependencies)) {
       requireValue(JSON.parse(readFileSync(join(deps,name,'package.json'))).version === version, 'wrong/missing isolated test dependency');

@@ -70,8 +70,8 @@ jobs:
       - name: Prove required real stdio skips fail the gate
         if: inputs.mode == 'accepted'
         env:
-          NODE24: ${{ steps.node24.outputs.binary }}
-        run: node harness/integrations/jso-agent/verify-required-skip.mjs "$GITHUB_WORKSPACE/paired-results" "$RUNNER_TEMP/jso-agent-sources" "$NODE24" "$GITHUB_WORKSPACE/skip-negative-control"
+          NODE22: ${{ steps.node22.outputs.binary }}
+        run: node harness/integrations/jso-agent/verify-required-skip.mjs "$GITHUB_WORKSPACE/paired-results" "$RUNNER_TEMP/jso-agent-sources" "$NODE22" "$GITHUB_WORKSPACE/skip-negative-control"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
