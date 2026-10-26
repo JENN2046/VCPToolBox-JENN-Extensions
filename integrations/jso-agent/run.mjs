@@ -22,9 +22,11 @@ function command(exe, args, options = {}) {
   return result.stdout.trim();
 }
 function git(root, args) { return command('git', ['-C',root,...args]); }
-export function verifyCheckout(root, sha) {
+export function verifyCheckout(root, sha, repository) {
   requireValue(existsSync(root) && realpathSync(root) === resolve(root), 'source root missing or aliased');
   requireValue(git(root, ['rev-parse','--show-toplevel']) === root, 'source root must be checkout top level');
+  requireValue(Object.values(COMPONENTS).some(c=>c[0]===repository)
+    && git(root,['remote','get-url','origin']).replace(/\.git$/, '') === `https://github.com/${repository}`, 'checkout repository identity mismatch');
   requireValue(git(root, ['rev-parse','HEAD']) === sha, 'checkout HEAD does not match resolved exact SHA');
   requireValue(git(root, ['status','--porcelain','--untracked-files=normal']) === '', 'source checkout is dirty');
 }
@@ -115,7 +117,7 @@ export async function runPaired(options) {
     if (options.mode === 'candidate') candidate = {component:options.candidateComponent, repository:options.candidateRepository, sha:options.candidateSha};
     else requireValue(!options.candidateComponent && !options.candidateRepository && !options.candidateSha, 'accepted mode cannot substitute a candidate');
     plan = resolvePlan(manifest,candidate);
-    harnessSha = git(HARNESS,['rev-parse','HEAD']); verifyCheckout(HARNESS,harnessSha);
+    harnessSha = git(HARNESS,['rev-parse','HEAD']); verifyCheckout(HARNESS,harnessSha,COMPONENTS.extensions[0]);
     requireValue(outside(HARNESS,out), 'output must be outside harness checkout');
     const nodes = {node22:resolve(options.node22),node24:resolve(options.node24)};
     const versions = {};
@@ -134,7 +136,7 @@ export async function runPaired(options) {
       for (const key of Object.keys(roots)) roots[key] = resolve(roots[key]);
     }
     for (const c of plan) {
-      verifyCheckout(roots[c.component],c.sha); requireValue(outside(roots[c.component],out), 'output must be outside source checkouts');
+      verifyCheckout(roots[c.component],c.sha,c.repository); requireValue(outside(roots[c.component],out), 'output must be outside source checkouts');
       if (c.component === 'vcpchat') requireValue(git(roots[c.component],['config','--get','core.autocrlf']) === 'true'
         && git(roots[c.component],['ls-files','--eol','modules/renderer/streamManager.js']).includes('w/crlf'), 'Chat renderer fixture requires a fresh Git CRLF checkout');
       if (c.component === 'jso') requireValue(pathToFileURL(roots[c.component]).pathname === roots[c.component], 'existing JSO fixture uses URL.pathname: use an ASCII source path without spaces');
@@ -160,8 +162,8 @@ export async function runPaired(options) {
       groups.push({component:group.component,runtime:versions[group.runtime],checkoutTextMode:group.checkoutTextMode,requiredFiles:group.files,...result});
       console.log(JSON.stringify({component:group.component,status:result.status,counts:result.counts}));
     }
-    for (const c of plan) verifyCheckout(roots[c.component],c.sha);
-    verifyCheckout(HARNESS,harnessSha);
+    for (const c of plan) verifyCheckout(roots[c.component],c.sha,c.repository);
+    verifyCheckout(HARNESS,harnessSha,COMPONENTS.extensions[0]);
   } catch (error) { errors.push(error.message); }
   const receipt = pairedReceipt({manifest,profile,plan,candidate,harnessSha,groups,errors});
   writeFileSync(join(out,'paired-result.v1.json'),JSON.stringify(receipt,null,2)+'\n');

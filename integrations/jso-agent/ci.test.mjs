@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
+import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {ROOT, COMPONENTS, loadManifest, validateManifest, resolvePlan} from './validate.mjs';
-import {cleanEnv, runTestGroup, assessEvents, pairedReceipt} from './run.mjs';
+import {cleanEnv, runTestGroup, assessEvents, pairedReceipt, verifyCheckout} from './run.mjs';
 const {manifest,profile} = loadManifest();
 const copy = () => structuredClone(manifest);
 test('the initial release binds exactly the accepted four-source composition',()=>{
@@ -83,4 +84,15 @@ test('malformed counts fail closed and cannot produce null/NaN receipt counts',(
  const events=[{type:'test:pass',data:{name:'actual test',file:'/synthetic/a.test.cjs',line:3,testType:'test'}},{type:'test:summary',data:{success:true,counts:{tests:1}}}];
  const result=assessEvents(events,0,['a.test.cjs'],'/synthetic');assert.equal(result.status,'FAIL');
  assert.ok(result.gateFailures.includes('invalid test accounting'));assert.ok(Object.values(result.counts).every(Number.isSafeInteger));
+});
+
+test('source verification rejects a wrong repository, wrong head and dirty source',t=>{
+ const root=mkdtempSync(join(tmpdir(),'aic-checkout-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git('init','-q');git('-c','user.name=AIC fixture','-c','user.email=aic@example.invalid','commit','--allow-empty','-qm','synthetic fixture');
+ const sha=git('rev-parse','HEAD');git('remote','add','origin','https://github.com/unknown/wrong.git');
+ assert.throws(()=>verifyCheckout(root,sha,COMPONENTS.extensions[0]),/repository identity/);
+ git('remote','set-url','origin','https://github.com/'+COMPONENTS.extensions[0]+'.git');verifyCheckout(root,sha,COMPONENTS.extensions[0]);
+ assert.throws(()=>verifyCheckout(root,'a'.repeat(40),COMPONENTS.extensions[0]),/HEAD/);
+ writeFileSync(join(root,'untracked.txt'),'synthetic');assert.throws(()=>verifyCheckout(root,sha,COMPONENTS.extensions[0]),/dirty/);
 });

@@ -70,7 +70,8 @@ receipts must not be used to store production credentials.
 ## Run
 
 Commit the harness changes first: the harness and all four test source checkouts
-must have exact HEADs and clean tracked/untracked source state. Results must live
+must have exact HEADs, the expected public GitHub origin, and clean
+tracked/untracked source state. Results must live
 outside those checkouts. Dependency directories ignored by Git are allowed.
 
 ```sh

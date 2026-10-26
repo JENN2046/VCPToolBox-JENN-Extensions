@@ -12,7 +12,8 @@ requireValue(baseline.status==='PASS' && baseline.candidate===null, 'negative co
 const {manifest,profile}=loadManifest();
 requireValue(baseline.profile.sha256===manifest.testProfile.sha256, 'baseline profile changed');
 const group=profile.groups.find(g=>g.component==='extensions'), root=join(workspace,'extensions');
-verifyCheckout(root,baseline.components.find(c=>c.component==='extensions').sha);
+const component=baseline.components.find(c=>c.component==='extensions');
+verifyCheckout(root,component.sha,component.repository);
 mkdirSync(output,{recursive:true});const home=mkdtempSync(join(output,'home-'));mkdirSync(join(home,'tmp'));
 const env=cleanEnv(home,node22,{NODE_PATH:join(workspace,'test-deps/node_modules'),JSO_VCHART_AUTHOR_SOURCE:join(baselineDirectory,'chart-author-source')});
 const result=runTestGroup({node:node22,root,files:group.files,env,output:join(output,'extensions')});
