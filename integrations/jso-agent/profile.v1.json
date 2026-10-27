@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "id": "jso-agent-paired",
+  "version": 1,
+  "nodeVersions": {
+    "node22": "22.23.1",
+    "node24": "24.21.0"
+  },
+  "groups": [
+    {
+      "component": "extensions",
+      "runtime": "node22",
+      "files": [
+        "ShootingOperationsPackages/JsoAgentAdapter/config.test.cjs",
+        "ShootingOperationsPackages/JsoAgentAdapter/test.cjs",
+        "ShootingOperationsPackages/JsoConversation/chart-display.test.cjs",
+        "ShootingOperationsPackages/JsoConversation/chart.test.cjs",
+        "ShootingOperationsPackages/JsoConversation/expiry.test.cjs",
+        "ShootingOperationsPackages/JsoConversation/limits.test.cjs",
+        "ShootingOperationsPackages/JsoConversation/races.test.cjs",
+        "ShootingOperationsPackages/JsoConversation/stdio.test.cjs"
+      ],
+      "checkoutTextMode": "git-lf"
+    },
+    {
+      "component": "vcpchat",
+      "runtime": "node22",
+      "files": [
+        "tests/native-conversation-ipc.test.cjs",
+        "tests/trusted-conversation-native-port.test.cjs",
+        "tests/native-websocket.test.cjs",
+        "tests/native-websocket-redaction.test.cjs",
+        "tests/native-projection-recovery.test.cjs",
+        "tests/native-presentation-lifecycle.test.cjs",
+        "tests/native-send-preflight.test.cjs",
+        "tests/native-result-delivery.test.cjs",
+        "tests/native-markdown-proposals.test.cjs"
+      ],
+      "checkoutTextMode": "git-crlf"
+    },
+    {
+      "component": "vcptoolbox",
+      "runtime": "node22",
+      "files": [
+        "tests/native-conversation-context.test.cjs",
+        "tests/native-websocket-connection.test.cjs",
+        "tests/native-websocket.test.cjs",
+        "tests/native-http-contract.test.cjs",
+        "tests/native-transport-diagnostics.test.cjs"
+      ],
+      "checkoutTextMode": "git-lf"
+    },
+    {
+      "component": "jso",
+      "runtime": "node24",
+      "files": [
+        "tests/jso-agent-api-v1.test.mjs",
+        "tests/jso-vcp-vchart-local.test.mjs",
+        "tests/jso-conversation-r1.test.mjs",
+        "tests/jso-conversation-cancellation-restart.test.mjs",
+        "tests/jso-conversation-http-boundary.test.mjs",
+        "tests/conversation-credential-separation.test.mjs",
+        "tests/conversation-identity-validation.test.mjs",
+        "tests/conversation-static-grants.test.mjs",
+        "tests/conversation-startup-policy.test.mjs",
+        "tests/conversation-kiosk-binding.test.mjs"
+      ],
+      "checkoutTextMode": "git-lf"
+    }
+  ],
+  "invariants": {
+    "read-and-parser": [
+      "extensions",
+      "jso"
+    ],
+    "preview-zero-write": [
+      "extensions",
+      "jso"
+    ],
+    "reject-model-authority": [
+      "vcpchat",
+      "vcptoolbox",
+      "jso"
+    ],
+    "presentation-human-source-binding": [
+      "vcpchat",
+      "extensions",
+      "jso"
+    ],
+    "at-most-one-dispatch": [
+      "vcpchat",
+      "extensions",
+      "jso"
+    ],
+    "concurrent-dispatch-reconciliation": [
+      "extensions",
+      "vcptoolbox",
+      "jso"
+    ],
+    "original-id-unknown-recovery": [
+      "extensions",
+      "vcpchat",
+      "jso"
+    ],
+    "durable-pre-dispatch-cancellation": [
+      "extensions",
+      "jso"
+    ],
+    "restart-receipt-recovery": [
+      "extensions",
+      "vcpchat",
+      "jso"
+    ],
+    "native-transport-security": [
+      "vcpchat",
+      "vcptoolbox"
+    ],
+    "business-scope-digest-revisions": [
+      "jso"
+    ],
+    "credential-and-log-separation": [
+      "vcpchat",
+      "vcptoolbox",
+      "jso"
+    ]
+  }
+}
