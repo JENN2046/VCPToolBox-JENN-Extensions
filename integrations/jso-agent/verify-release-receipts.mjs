@@ -3,12 +3,12 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {COMPONENTS, R2_COMPONENTS, PROFILE_SHA256, loadManifest, isSha, requireValue, sha256} from './validate.mjs';
+import {COMPONENTS, LEGACY_R1_COMPONENTS, R2_COMPONENTS, PROFILE_SHA256, loadManifest, isSha, requireValue, sha256} from './validate.mjs';
 import {STABLE_HARNESS} from './verify-engine-identity.mjs';
 
 export function verifyReleaseReceipt(receipt, releaseId, harnessSha) {
   requireValue(['JSO_AGENT_R1','JSO_AGENT_R2'].includes(releaseId) && isSha(harnessSha), 'invalid receipt verification context');
-  const expected=releaseId==='JSO_AGENT_R1' ? COMPONENTS : R2_COMPONENTS;
+  const expected=releaseId==='JSO_AGENT_R1' ? LEGACY_R1_COMPONENTS : R2_COMPONENTS;
   const counts=releaseId==='JSO_AGENT_R1' ? {extensions:38,vcpchat:209,vcptoolbox:171,jso:72}
     : {extensions:38,vcpchat:209,vcptoolbox:191,jso:74};
   const total=Object.values(counts).reduce((a,b)=>a+b,0);

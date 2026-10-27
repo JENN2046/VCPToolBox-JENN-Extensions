@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "JSO_AGENT_R1",
+  "acceptance": {
+    "issue": "https://github.com/JENN2046/jenn-shooting-operations/issues/83",
+    "receipt": "https://github.com/JENN2046/jenn-shooting-operations/issues/83#issuecomment-6423599717",
+    "result": "JSO_AGENT_REAL_ACCEPTANCE_R1_PASS"
+  },
+  "components": [
+    {
+      "id": "extensions",
+      "repository": "JENN2046/VCPToolBox-JENN-Extensions",
+      "acceptedSha": "6a6f0a9c0ca27e366bb4d81aa3a09ce999baef9c",
+      "integrationBranch": "main",
+      "contracts": {
+        "provides": [],
+        "consumes": [
+          {
+            "name": "trustedAction",
+            "version": 1
+          },
+          {
+            "name": "jsoAgentApi",
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "vcpchat",
+      "repository": "JENN2046/VCPChat",
+      "acceptedSha": "1f86d5912c6acb3588577945e19045edc1256731",
+      "integrationBranch": "NuobaoVCPchat",
+      "contracts": {
+        "provides": [],
+        "consumes": [
+          {
+            "name": "trustedAction",
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "vcptoolbox",
+      "repository": "JENN2046/VCPToolBox",
+      "acceptedSha": "ce904c476f58e0857aa9ee828619158a82d75e7e",
+      "integrationBranch": "master",
+      "contracts": {
+        "provides": [
+          {
+            "name": "trustedAction",
+            "version": 1
+          }
+        ],
+        "consumes": []
+      }
+    },
+    {
+      "id": "jso",
+      "repository": "JENN2046/jenn-shooting-operations",
+      "acceptedSha": "0936ac209ebfd52c3901b06b43cdcdad9a8c3210",
+      "integrationBranch": "main",
+      "contracts": {
+        "provides": [
+          {
+            "name": "jsoAgentApi",
+            "version": 1
+          }
+        ],
+        "consumes": []
+      }
+    }
+  ],
+  "trustedActionContract": 1,
+  "jsoAgentApiContract": 1,
+  "jsoRuntimeAcceptance": "R5",
+  "testProfile": {
+    "id": "jso-agent-paired",
+    "version": 1,
+    "file": "profile.v1.json",
+    "sha256": "d1e6e5e16f83216053b6131ccc2d1dd7996ea019edd734ffde226fa7856e38b6"
+  }
+}

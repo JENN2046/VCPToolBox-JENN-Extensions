@@ -8,7 +8,7 @@ import {ROOT, COMPONENTS, loadManifest, validateManifest, resolvePlan} from './v
 import {cleanEnv, runTestGroup, assessEvents, pairedReceipt, verifyCheckout} from './run.mjs';
 const {manifest,profile} = loadManifest();
 const copy = () => structuredClone(manifest);
-test('the initial release binds exactly the accepted four-source composition',()=>{
+test('canonical R2 binds exactly the accepted four-source composition',()=>{
   assert.equal(validateManifest(copy()).version,1);
   assert.deepEqual(Object.fromEntries(resolvePlan(manifest).map(c=>[c.component,c.sha])),Object.fromEntries(Object.entries(COMPONENTS).map(([k,v])=>[k,v[1]])));
 });
@@ -25,7 +25,7 @@ for (const [name, mutate] of Object.entries({
   'component contract version':m=>m.components[0].contracts.consumes[0].version=2,
   'runtime acceptance':m=>m.jsoRuntimeAcceptance='R4',
   'malformed evidence':m=>m.acceptance.receipt+='?token=bad',
-  'wrong acceptance':m=>m.acceptance.issue=m.acceptance.issue.replace('/83','/86'),
+  'wrong acceptance':m=>m.acceptance.issue='https://github.com/JENN2046/jenn-shooting-operations/issues/86',
   'stale profile':m=>m.testProfile.version=0,
   'nonexistent profile':m=>m.testProfile.file='missing.json',
   'profile path escape':m=>m.testProfile.file='../profile.v1.json',

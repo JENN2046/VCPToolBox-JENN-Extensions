@@ -1,4 +1,4 @@
-name: JSO Agent R2 release candidate
+name: JSO Agent R2 canonical promotion
 
 on:
   pull_request:
@@ -10,89 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: jso-agent-r2a-${{ github.event.pull_request.number || github.ref }}
+  group: jso-agent-r2b-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  r1-control:
-    uses: JENN2046/VCPToolBox-JENN-Extensions/.github/workflows/jso-agent-paired.yml@77e89fae03202a3d861d6f3e78c8a06666df304d
+  promotion:
+    uses: JENN2046/VCPToolBox-JENN-Extensions/.github/workflows/jso-agent-promotion.yml@7d071c5eb00822052ee0e11dc64c1b8e440fb715
     with:
-      harness_sha: 77e89fae03202a3d861d6f3e78c8a06666df304d
-      mode: accepted
-
-  r2-candidate:
-    needs: r1-control
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          path: release-validator
-          persist-credentials: false
-          sparse-checkout: |
-            integrations/jso-agent
-            .github/workflows
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: JENN2046/VCPToolBox-JENN-Extensions
-          ref: 77e89fae03202a3d861d6f3e78c8a06666df304d
-          path: stable-harness
-          persist-credentials: false
-          sparse-checkout: |
-            integrations/jso-agent
-            .github/workflows
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22.23.1
-      - id: node22
-        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24.21.0
-      - id: node24
-        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
-      - name: Verify exact stable engine, deps, skip helper and canonical R1 bytes
-        run: node release-validator/integrations/jso-agent/verify-engine-identity.mjs --reference "$GITHUB_WORKSPACE/stable-harness"
-      - name: Validate both manifests and release-validation failure cases
-        run: |
-          node release-validator/integrations/jso-agent/validate.mjs
-          node release-validator/integrations/jso-agent/validate.mjs release-validator/integrations/jso-agent/compatibility.r2.candidate.json
-          node --test release-validator/integrations/jso-agent/ci.test.mjs release-validator/integrations/jso-agent/release-candidate.test.mjs
-      - name: Execute complete R2 composition using byte-identical stable engine
-        env:
-          NODE22: ${{ steps.node22.outputs.binary }}
-          NODE24: ${{ steps.node24.outputs.binary }}
-        run: |
-          node release-validator/integrations/jso-agent/run.mjs \
-            --mode accepted \
-            --manifest "$GITHUB_WORKSPACE/release-validator/integrations/jso-agent/compatibility.r2.candidate.json" \
-            --workspace "$RUNNER_TEMP/jso-agent-r2-sources" \
-            --out "$GITHUB_WORKSPACE/r2-results" \
-            --node22 "$NODE22" --node24 "$NODE24"
-      - name: Download immutable R1 control receipt
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: jso-agent-accepted-frozen
-          path: r1-control
-      - name: Verify and expose both actual standard receipts
-        env:
-          VALIDATOR_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          node release-validator/integrations/jso-agent/verify-release-receipts.mjs \
-            "$GITHUB_WORKSPACE/r1-control/paired-results/paired-result.v1.json" \
-            "$GITHUB_WORKSPACE/r2-results/paired-result.v1.json" "$VALIDATOR_SHA"
-      - name: Upload R2 candidate standard receipt and synthetic evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: jso-agent-r2-release-candidate
-          path: |
-            r2-results/paired-result.v1.json
-            r2-results/chart-author-source.json
-            r2-results/extensions
-            r2-results/vcpchat
-            r2-results/vcptoolbox
-            r2-results/jso
-          if-no-files-found: warn
-          retention-days: 14
+      candidate_sha: ${{ github.event.pull_request.head.sha || github.sha }}

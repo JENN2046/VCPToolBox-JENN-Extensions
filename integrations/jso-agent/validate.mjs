@@ -4,19 +4,20 @@ import {basename, dirname, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
 export const ROOT = dirname(fileURLToPath(import.meta.url));
-export const COMPONENTS = Object.freeze({
+export const LEGACY_R1_COMPONENTS = Object.freeze({
   extensions: ['JENN2046/VCPToolBox-JENN-Extensions', '6a6f0a9c0ca27e366bb4d81aa3a09ce999baef9c', 'main', [], ['trustedAction', 'jsoAgentApi']],
   vcpchat: ['JENN2046/VCPChat', '1f86d5912c6acb3588577945e19045edc1256731', 'NuobaoVCPchat', [], ['trustedAction']],
   vcptoolbox: ['JENN2046/VCPToolBox', 'ce904c476f58e0857aa9ee828619158a82d75e7e', 'master', ['trustedAction'], []],
   jso: ['JENN2046/jenn-shooting-operations', '0936ac209ebfd52c3901b06b43cdcdad9a8c3210', 'main', ['jsoAgentApi'], []],
 });
-export const R2_COMPONENTS = Object.freeze(Object.fromEntries(Object.entries(COMPONENTS).map(([id, value]) => [id,
+export const R2_COMPONENTS = Object.freeze(Object.fromEntries(Object.entries(LEGACY_R1_COMPONENTS).map(([id, value]) => [id,
   [value[0], {
     extensions:'54b0bfb4d94bc9f3a53516cd4082fb7c4c6d351c',
     vcpchat:'900fdda5e24347d802b738924d8456a42c01477f',
     vcptoolbox:'b0552cd3e109a8cfe38ac5ee292cc026891d7442',
     jso:'bfaf4dfe1c6558beb0ff9113990946aa85a257a3',
   }[id], ...value.slice(2)]])));
+export const COMPONENTS = R2_COMPONENTS;
 export const PROFILE_SHA256 = 'd1e6e5e16f83216053b6131ccc2d1dd7996ea019edd734ffde226fa7856e38b6';
 export const R2_PROMOTION_RECEIPT = 'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28#issuecomment-6436790468';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -27,7 +28,12 @@ function keys(value, expected, label) {
     && Object.keys(value).sort().join(',') === [...expected].sort().join(','), `${label}: unexpected or missing keys`);
 }
 export function validateManifest(manifest, directory = ROOT) {
-  return validateRelease(manifest, directory, 'JSO_AGENT_R1', COMPONENTS, {
+  // Canonical R2 is exactly the accepted data checked by immutable R2A's
+  // promotion validator. Local loading does not replace that external gate.
+  return validatePromotion(manifest, directory);
+}
+export function validateLegacyR1(manifest, directory = ROOT) {
+  return validateRelease(manifest, directory, 'JSO_AGENT_R1', LEGACY_R1_COMPONENTS, {
     issue:'https://github.com/JENN2046/jenn-shooting-operations/issues/83',
     receipt:'https://github.com/JENN2046/jenn-shooting-operations/issues/83#issuecomment-6423599717',
     result:'JSO_AGENT_REAL_ACCEPTANCE_R1_PASS',
@@ -101,7 +107,10 @@ function validateRelease(manifest, directory, releaseId, components, acceptance)
   return profile;
 }
 export function resolvePlan(manifest, candidate = null) {
-  requireValue(manifest.releaseId !== 'JSO_AGENT_R2' || !candidate, 'R2 release candidate requires the complete four-pin composition, not substitution');
+  requireValue(manifest.releaseId !== 'JSO_AGENT_R2' || !candidate
+    || manifest.acceptance?.result === 'JSO_AGENT_R2_COMPATIBILITY_ACCEPTED',
+    'R2 release candidate requires the complete four-pin composition, not substitution');
+  if (manifest.releaseId === 'JSO_AGENT_R2' && candidate) validateManifest(manifest);
   if (candidate) {
     keys(candidate, ['component','repository','sha'], 'candidate');
     requireValue(Object.hasOwn(COMPONENTS, candidate.component) && candidate.repository === COMPONENTS[candidate.component][0] && isSha(candidate.sha), 'invalid candidate identity');
@@ -113,8 +122,8 @@ export function loadManifest(path = resolve(ROOT, 'compatibility.v1.json'), mode
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
   // The unchanged runner has a manifest-path input. Reserved staging filenames
   // select a validation mode without changing its execution/receipt semantics.
-  mode ??= ({'compatibility.r2.candidate.json':'candidate', 'compatibility.r2.promotion.json':'promotion'})[basename(path)] || 'r1';
-  const validators = {r1:validateManifest, candidate:validateReleaseCandidate, promotion:validatePromotion};
+  mode ??= ({'compatibility.r2.candidate.json':'candidate', 'compatibility.r2.promotion.json':'promotion'})[basename(path)] || 'canonical';
+  const validators = {canonical:validateManifest, r1:validateLegacyR1, candidate:validateReleaseCandidate, promotion:validatePromotion};
   requireValue(Object.hasOwn(validators, mode), 'unknown manifest validation mode');
   const validate = validators[mode];
   return {manifest, profile:validate(manifest, dirname(resolve(path)))};
@@ -125,7 +134,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     let path, mode;
     if (args.length<=1 && !args[0]?.startsWith('--')) [path]=args;
     else {
-      requireValue(args.length===4 && args[0]==='--mode' && args[2]==='--manifest', 'usage: validate.mjs [manifest] | --mode r1|candidate|promotion --manifest path');
+      requireValue(args.length===4 && args[0]==='--mode' && args[2]==='--manifest', 'usage: validate.mjs [manifest] | --mode canonical|r1|candidate|promotion --manifest path');
       mode=args[1];path=args[3];
     }
     const {manifest, profile} = loadManifest(path, mode);
