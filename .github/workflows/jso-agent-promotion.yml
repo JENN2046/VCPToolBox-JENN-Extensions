@@ -1,0 +1,124 @@
+name: JSO Agent immutable R2 promotion validation
+
+on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        description: Exact future R2B Extensions manifest commit; never a branch or tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promotion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Bind validator checkout to the actual immutable reusable workflow
+        id: authority
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CALLER_REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          node <<'NODE'
+          // BEGIN PROMOTION AUTHORITY: tested verbatim without network access.
+          const {appendFileSync}=require('node:fs');
+          (async()=>{
+            const repository='JENN2046/VCPToolBox-JENN-Extensions';
+            const workflow=repository+'/.github/workflows/jso-agent-promotion.yml@';
+            const exact=value=>typeof value==='string' && /^[a-f0-9]{40}$/.test(value);
+            if (process.env.CALLER_REPOSITORY!==repository || !exact(process.env.CANDIDATE_SHA)
+              || !/^[1-9][0-9]*$/.test(process.env.RUN_ID)) throw Error('invalid promotion caller/candidate identity');
+            // Public read only; no token, secrets or candidate-supplied URL/code.
+            const response=await fetch(`https://api.github.com/repos/${repository}/actions/runs/${process.env.RUN_ID}`,
+              {headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(30000)});
+            if (!response.ok) throw Error('cannot read immutable workflow authority: HTTP '+response.status);
+            const run=await response.json();
+            const refs=run.referenced_workflows?.filter(ref=>ref.path?.startsWith(workflow));
+            if (String(run.id)!==process.env.RUN_ID || !Array.isArray(refs) || refs.length!==1
+              || !exact(refs[0].sha) || refs[0].path!==workflow+refs[0].sha
+              || refs[0].sha===process.env.CANDIDATE_SHA) throw Error('promotion requires one exact immutable validator, distinct from candidate');
+            appendFileSync(process.env.GITHUB_OUTPUT,'validator_sha='+refs[0].sha+'\n');
+            console.log(JSON.stringify({validatorSha:refs[0].sha,candidateSha:process.env.CANDIDATE_SHA,referencedWorkflow:refs[0]}));
+          })().catch(error=>{console.error(error.message);process.exitCode=1;});
+          // END PROMOTION AUTHORITY
+          NODE
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: JENN2046/VCPToolBox-JENN-Extensions
+          ref: ${{ steps.authority.outputs.validator_sha }}
+          path: immutable-validator
+          persist-credentials: false
+          sparse-checkout: |
+            integrations/jso-agent
+            .github/workflows
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: JENN2046/VCPToolBox-JENN-Extensions
+          ref: ${{ inputs.candidate_sha }}
+          path: promotion-candidate
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /integrations/jso-agent/compatibility.v1.json
+            /integrations/jso-agent/profile.v1.json
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: JENN2046/VCPToolBox-JENN-Extensions
+          ref: 77e89fae03202a3d861d6f3e78c8a06666df304d
+          path: stable-harness
+          persist-credentials: false
+          sparse-checkout: |
+            integrations/jso-agent
+            .github/workflows
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.1
+      - id: node22
+        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.21.0
+      - id: node24
+        run: echo "binary=$(node -p 'process.execPath')" >> "$GITHUB_OUTPUT"
+      - name: Verify immutable engine identity and validator conformance
+        run: |
+          node immutable-validator/integrations/jso-agent/verify-engine-identity.mjs --reference "$GITHUB_WORKSPACE/stable-harness"
+          node immutable-validator/integrations/jso-agent/validate.mjs
+          node --test immutable-validator/integrations/jso-agent/ci.test.mjs immutable-validator/integrations/jso-agent/release-candidate.test.mjs
+      - name: Validate and stage only future R2B manifest/profile data
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          node immutable-validator/integrations/jso-agent/prepare-promotion.mjs \
+            "$GITHUB_WORKSPACE/promotion-candidate" "$CANDIDATE_SHA" \
+            "$RUNNER_TEMP/r2-promotion-input" > "$RUNNER_TEMP/promotion-context.json"
+          cat "$RUNNER_TEMP/promotion-context.json"
+      - name: Execute full four-pin composition with the immutable paired engine
+        env:
+          NODE22: ${{ steps.node22.outputs.binary }}
+          NODE24: ${{ steps.node24.outputs.binary }}
+        run: |
+          node immutable-validator/integrations/jso-agent/run.mjs \
+            --mode accepted --manifest "$RUNNER_TEMP/r2-promotion-input/compatibility.r2.promotion.json" \
+            --workspace "$RUNNER_TEMP/r2-promotion-sources" --out "$GITHUB_WORKSPACE/promotion-results" \
+            --node22 "$NODE22" --node24 "$NODE24"
+      - name: Require standard R2 receipt with 512 passes and zero skips
+        env:
+          VALIDATOR_SHA: ${{ steps.authority.outputs.validator_sha }}
+        run: |
+          node immutable-validator/integrations/jso-agent/verify-release-receipts.mjs --promotion \
+            "$GITHUB_WORKSPACE/promotion-results/paired-result.v1.json" "$VALIDATOR_SHA"
+      - name: Retain standard receipt and exact candidate data identity
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jso-agent-r2-promotion-validation
+          path: |
+            promotion-results
+            ${{ runner.temp }}/promotion-context.json
+          if-no-files-found: warn
+          retention-days: 14

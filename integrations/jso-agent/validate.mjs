@@ -1,6 +1,6 @@
 import {readFileSync, lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {dirname, resolve} from 'node:path';
+import {basename, dirname, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
 export const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -10,6 +10,15 @@ export const COMPONENTS = Object.freeze({
   vcptoolbox: ['JENN2046/VCPToolBox', 'ce904c476f58e0857aa9ee828619158a82d75e7e', 'master', ['trustedAction'], []],
   jso: ['JENN2046/jenn-shooting-operations', '0936ac209ebfd52c3901b06b43cdcdad9a8c3210', 'main', ['jsoAgentApi'], []],
 });
+export const R2_COMPONENTS = Object.freeze(Object.fromEntries(Object.entries(COMPONENTS).map(([id, value]) => [id,
+  [value[0], {
+    extensions:'54b0bfb4d94bc9f3a53516cd4082fb7c4c6d351c',
+    vcpchat:'900fdda5e24347d802b738924d8456a42c01477f',
+    vcptoolbox:'b0552cd3e109a8cfe38ac5ee292cc026891d7442',
+    jso:'bfaf4dfe1c6558beb0ff9113990946aa85a257a3',
+  }[id], ...value.slice(2)]])));
+export const PROFILE_SHA256 = 'd1e6e5e16f83216053b6131ccc2d1dd7996ea019edd734ffde226fa7856e38b6';
+export const R2_PROMOTION_RECEIPT = 'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28#issuecomment-6436790468';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export function requireValue(value, message) { if (!value) throw Error(message); }
 export const isSha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
@@ -18,22 +27,41 @@ function keys(value, expected, label) {
     && Object.keys(value).sort().join(',') === [...expected].sort().join(','), `${label}: unexpected or missing keys`);
 }
 export function validateManifest(manifest, directory = ROOT) {
+  return validateRelease(manifest, directory, 'JSO_AGENT_R1', COMPONENTS, {
+    issue:'https://github.com/JENN2046/jenn-shooting-operations/issues/83',
+    receipt:'https://github.com/JENN2046/jenn-shooting-operations/issues/83#issuecomment-6423599717',
+    result:'JSO_AGENT_REAL_ACCEPTANCE_R1_PASS',
+  });
+}
+export function validateReleaseCandidate(manifest, directory = ROOT) {
+  return validateRelease(manifest, directory, 'JSO_AGENT_R2', R2_COMPONENTS, {
+    issue:'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28',
+    receipt:'https://github.com/JENN2046/jenn-shooting-operations/issues/83#issuecomment-6423599717',
+    result:'JSO_AGENT_R2_CANDIDATE_NOT_ACCEPTED',
+  });
+}
+export function validatePromotion(manifest, directory = ROOT) {
+  return validateRelease(manifest, directory, 'JSO_AGENT_R2', R2_COMPONENTS, {
+    issue:'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28',
+    receipt:R2_PROMOTION_RECEIPT,
+    result:'JSO_AGENT_R2_COMPATIBILITY_ACCEPTED',
+  });
+}
+function validateRelease(manifest, directory, releaseId, components, acceptance) {
   keys(manifest, ['schemaVersion','releaseId','acceptance','components','trustedActionContract','jsoAgentApiContract','jsoRuntimeAcceptance','testProfile'], 'manifest');
-  requireValue(manifest.schemaVersion === 1 && manifest.releaseId === 'JSO_AGENT_R1', 'unsupported schema/release');
+  requireValue(manifest.schemaVersion === 1 && manifest.releaseId === releaseId, 'unsupported schema/release');
   requireValue(manifest.trustedActionContract === 1 && manifest.jsoAgentApiContract === 1 && manifest.jsoRuntimeAcceptance === 'R5', 'unsupported contract/runtime version');
   keys(manifest.acceptance, ['issue','receipt','result'], 'acceptance');
-  const issue = 'https://github.com/JENN2046/jenn-shooting-operations/issues/83';
-  requireValue(manifest.acceptance.issue === issue && manifest.acceptance.receipt === issue + '#issuecomment-6423599717'
-    && manifest.acceptance.result === 'JSO_AGENT_REAL_ACCEPTANCE_R1_PASS', 'malformed/unaccepted acceptance evidence');
+  requireValue(Object.entries(acceptance).every(([key,value]) => manifest.acceptance[key] === value), 'malformed/unaccepted acceptance evidence');
   requireValue(Array.isArray(manifest.components) && manifest.components.length === 4, 'exactly four components required');
   const seen = new Set();
   for (const c of manifest.components) {
     keys(c, ['id','repository','acceptedSha','integrationBranch','contracts'], 'component');
-    requireValue(Object.hasOwn(COMPONENTS, c.id) && !seen.has(c.id), 'unknown/duplicate component'); seen.add(c.id);
-    const [repository, sha, branch, provides, consumes] = COMPONENTS[c.id];
+    requireValue(Object.hasOwn(components, c.id) && !seen.has(c.id), 'unknown/duplicate component'); seen.add(c.id);
+    const [repository, sha, branch, provides, consumes] = components[c.id];
     requireValue(c.repository === repository, 'unknown repository');
     requireValue(isSha(c.acceptedSha), 'accepted SHA must be exact lowercase 40-hex, never a branch/tag');
-    requireValue(c.acceptedSha === sha, 'JSO_AGENT_R1 accepted pin changed; requires a new reviewed release');
+    requireValue(c.acceptedSha === sha, `${releaseId} exact pin changed; requires a new reviewed release`);
     requireValue(c.integrationBranch === branch, 'unexpected informational branch');
     keys(c.contracts, ['provides','consumes'], 'contracts');
     for (const [key, names] of [['provides', provides], ['consumes', consumes]]) {
@@ -45,6 +73,7 @@ export function validateManifest(manifest, directory = ROOT) {
   const ref = manifest.testProfile;
   keys(ref, ['id','version','file','sha256'], 'testProfile');
   requireValue(ref.id === 'jso-agent-paired' && ref.version === 1 && ref.file === 'profile.v1.json', 'unsupported/stale test profile');
+  requireValue(ref.sha256 === PROFILE_SHA256, 'reviewed profile digest changed');
   const file = resolve(directory, ref.file);
   requireValue(lstatSync(file).isFile() && !lstatSync(file).isSymbolicLink(), 'profile must be a regular local file');
   const bytes = readFileSync(file);
@@ -72,6 +101,7 @@ export function validateManifest(manifest, directory = ROOT) {
   return profile;
 }
 export function resolvePlan(manifest, candidate = null) {
+  requireValue(manifest.releaseId !== 'JSO_AGENT_R2' || !candidate, 'R2 release candidate requires the complete four-pin composition, not substitution');
   if (candidate) {
     keys(candidate, ['component','repository','sha'], 'candidate');
     requireValue(Object.hasOwn(COMPONENTS, candidate.component) && candidate.repository === COMPONENTS[candidate.component][0] && isSha(candidate.sha), 'invalid candidate identity');
@@ -79,11 +109,27 @@ export function resolvePlan(manifest, candidate = null) {
   return manifest.components.map(c => ({component:c.id, repository:c.repository,
     sha: candidate?.component === c.id ? candidate.sha : c.acceptedSha, source: candidate?.component === c.id ? 'candidate' : 'accepted'}));
 }
-export function loadManifest(path = resolve(ROOT, 'compatibility.v1.json')) {
+export function loadManifest(path = resolve(ROOT, 'compatibility.v1.json'), mode = null) {
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
-  return {manifest, profile:validateManifest(manifest, dirname(resolve(path)))};
+  // The unchanged runner has a manifest-path input. Reserved staging filenames
+  // select a validation mode without changing its execution/receipt semantics.
+  mode ??= ({'compatibility.r2.candidate.json':'candidate', 'compatibility.r2.promotion.json':'promotion'})[basename(path)] || 'r1';
+  const validators = {r1:validateManifest, candidate:validateReleaseCandidate, promotion:validatePromotion};
+  requireValue(Object.hasOwn(validators, mode), 'unknown manifest validation mode');
+  const validate = validators[mode];
+  return {manifest, profile:validate(manifest, dirname(resolve(path)))};
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  try { const {manifest, profile} = loadManifest(process.argv[2]); console.log(JSON.stringify({valid:true, releaseId:manifest.releaseId, profile:profile.id, version:profile.version})); }
+  try {
+    const args=process.argv.slice(2);
+    let path, mode;
+    if (args.length<=1 && !args[0]?.startsWith('--')) [path]=args;
+    else {
+      requireValue(args.length===4 && args[0]==='--mode' && args[2]==='--manifest', 'usage: validate.mjs [manifest] | --mode r1|candidate|promotion --manifest path');
+      mode=args[1];path=args[3];
+    }
+    const {manifest, profile} = loadManifest(path, mode);
+    console.log(JSON.stringify({valid:true, releaseId:manifest.releaseId, profile:profile.id, version:profile.version}));
+  }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }
