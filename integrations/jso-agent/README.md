@@ -1,5 +1,102 @@
 # JSO Agent paired compatibility, Batch 1
 
+## R2A release-candidate validation
+
+[Extensions #28](https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28)
+adds an independent `JSO_AGENT_R2` **candidate**, not an accepted release.
+`compatibility.v1.json` remains byte-identical accepted `JSO_AGENT_R1`.
+The four existing thin callers and reusable `jso-agent-paired.yml` are unchanged.
+No release/tag, merge, deployment, business write, runtime upgrade or #83 fixture
+operation is part of R2A. R2B promotion and R2C repinning are separate work.
+
+`compatibility.r2.candidate.json` resolves exactly this proposed composition:
+
+| Component | Proposed SHA | Informational branch |
+|---|---|---|
+| Extensions | `54b0bfb4d94bc9f3a53516cd4082fb7c4c6d351c` | `main` |
+| VCPChat | `900fdda5e24347d802b738924d8456a42c01477f` | `NuobaoVCPchat` |
+| VCPToolBox | `b0552cd3e109a8cfe38ac5ee292cc026891d7442` | `master` |
+| JSO | `bfaf4dfe1c6558beb0ff9113990946aa85a257a3` | `main` |
+
+Its `acceptance.result` is explicitly `JSO_AGENT_R2_CANDIDATE_NOT_ACCEPTED`.
+The linked #83 receipt is historical **runtime** evidence, not a claim of R2
+compatibility acceptance. The proposal's issue is #28. Contracts remain
+Trusted Action v1 / JSO Agent API v1, runtime acceptance R5, profile
+`jso-agent-paired` version 1, digest
+`d1e6e5e16f83216053b6131ccc2d1dd7996ea019edd734ffde226fa7856e38b6`.
+
+`validateManifest` and the default/canonical filename continue to admit only the
+exact R1 release/evidence/pins. `validateReleaseCandidate` admits only the exact
+R2 proposal above, with exact repositories, branches, contracts and profile.
+`loadManifest` selects that validator only for the explicit
+`compatibility.r2.candidate.json` filename. Putting R2 data under the canonical
+filename fails. There is no generic “any 40-hex release pin” permission. R2
+planning rejects per-component substitution: this gate must run the entire new
+composition. Updating a profile and its declared digest together cannot admit
+new selection: both release validators require the reviewed immutable digest.
+
+`verify-engine-identity.mjs` checks fixed SHA256 identities from stable harness
+`77e89fae03202a3d861d6f3e78c8a06666df304d`. It covers `run.mjs`, `reporter.cjs`,
+`profile.v1.json`, both dependency manifests, the real required-skip negative-control
+helper, the original reusable workflow and canonical R1 manifest. CI also checks
+the bytes against a **separate checkout of that exact stable commit** before
+testing. The execution/receipt producer and skip semantics are not forked.
+
+The dedicated `jso-agent-release-candidate.yml` workflow:
+
+1. Calls the immutable R1 reusable workflow at `77e89fa...` in accepted mode,
+   including its real required-skip negative control.
+2. Checks out the release validator at the actual PR head (or push/manual SHA)
+   and independently compares protected files to the stable checkout.
+3. Runs both manifest validators, existing CI tests and new release-candidate
+   adversarial tests.
+4. Runs the **unchanged engine** with `--manifest compatibility.r2.candidate.json`
+   and `--mode accepted`, so **all four sources** come from the candidate manifest.
+   Here accepted mode is the engine's existing *no-substitution* mechanism; it
+   does not promote this file, grant production authority or assert that R2 is
+   the canonical accepted release. The unmodified receipt accordingly retains
+   `candidate:null` and component `source:accepted` labels. `releaseId` and the
+   explicit manifest/workflow context identify this R2 candidate.
+5. Downloads the R1 control's artifact within GitHub Actions and verifies both
+   actual standard `paired-result.v1.json` outputs. R1 must be 490/490, R2 must
+   be **512/512** (38 Extensions + 209 Chat + 191 ToolBox + 74 JSO), with no
+   failure, skip, TODO, cancellation, substitution or gate failure. Contract,
+   profile, component identities, actual runtimes and required file selections
+   must match. `productionAuthorization` must be false.
+6. Prints the parsed receipts and their raw-file SHA256 digests for independent
+   review, and uploads the unchanged R2 standard receipt plus synthetic evidence.
+
+The R1 receipt's harness SHA is the immutable stable `77e89fa...`. The R2 receipt's
+harness SHA identifies the **release-validator commit**, distinct from its
+Extensions test-source pin `54b0bfb...`; its protected engine bytes are identical
+to `77e89fa...`. Do not relabel these different identities as interchangeable.
+Both Node versions remain exactly 22.23.1/24.21.0. Permissions are read-only,
+checkout credentials are not persisted, no secrets are forwarded and no
+repository-dispatch token is introduced.
+
+Local release-validation checks (no production access):
+
+```sh
+node integrations/jso-agent/verify-engine-identity.mjs
+node integrations/jso-agent/validate.mjs
+node integrations/jso-agent/validate.mjs integrations/jso-agent/compatibility.r2.candidate.json
+node --test integrations/jso-agent/ci.test.mjs integrations/jso-agent/release-candidate.test.mjs
+```
+
+The new tests reject drift of every R1/R2 source, branch, contract, evidence and
+profile; candidate-only R2 data in the canonical filename; changed/symlinked
+engine files; and mutated/incomplete receipt counts/sources/runtimes/selections.
+A real Node required-skip event is passed through the unchanged producer and
+must yield a FAIL R2 receipt. The original tests/negative-control semantics remain.
+
+Before R2A handoff, verify exact-head R1 control PASS, R2 512 PASS / 0 required
+skips / empty gateFailures, byte guard PASS and clean review. Stop at
+`AIC_R1_R2A_RELEASE_CANDIDATE_READY_FOR_REVIEW`, without merging. Any post-merge
+candidate receipt and later promotion require the separately authorized next
+steps in #28; this proposal alone does not advance canonical acceptance.
+
+## Original R1 baseline
+
 This directory composes the already-existing tests of the four accepted source
 revisions from [JSO #83](https://github.com/JENN2046/jenn-shooting-operations/issues/83).
 It does not implement Trusted Action, issue authority, change Agent behavior, or
