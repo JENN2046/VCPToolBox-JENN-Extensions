@@ -19,9 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         mode: [accepted, candidate]
-    uses: ./.github/workflows/jso-agent-paired.yml
+    uses: JENN2046/VCPToolBox-JENN-Extensions/.github/workflows/jso-agent-paired.yml@77e89fae03202a3d861d6f3e78c8a06666df304d
     with:
-      harness_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      harness_sha: 77e89fae03202a3d861d6f3e78c8a06666df304d
       mode: ${{ matrix.mode }}
       candidate_component: ${{ matrix.mode == 'candidate' && 'extensions' || '' }}
       candidate_repository: ${{ matrix.mode == 'candidate' && 'JENN2046/VCPToolBox-JENN-Extensions' || '' }}
