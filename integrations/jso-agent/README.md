@@ -33,7 +33,81 @@ R2 proposal above, with exact repositories, branches, contracts and profile.
 filename fails. There is no generic “any 40-hex release pin” permission. R2
 planning rejects per-component substitution: this gate must run the entire new
 composition. Updating a profile and its declared digest together cannot admit
-new selection: both release validators require the reviewed immutable digest.
+new selection: all three release validators require the reviewed immutable digest.
+
+### Immutable R2 promotion bridge (capability only)
+
+R2A also freezes a distinct `validatePromotion` / `--mode promotion` validator.
+It requires the **same exact four R2 pins**, branches, contracts v1, R5 and
+unchanged profile digest, plus precisely:
+
+```json
+{
+  "issue": "https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28",
+  "receipt": "https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28#issuecomment-6436790468",
+  "result": "JSO_AGENT_R2_COMPATIBILITY_ACCEPTED"
+}
+```
+
+That fixed anchor is currently **pending**, not accepted. R2A neither changes
+it nor publishes an accepted R2 manifest. After authorized R2A merge, the owner
+must independently verify its immutable post-merge candidate receipt and update
+the reserved anchor before starting R2B. The validator checks the frozen evidence
+identity; its structural PASS is not a substitute for that owner acceptance.
+
+Validation modes cannot cross-admit evidence:
+
+| Mode | Release and evidence |
+|---|---|
+| `r1` (canonical/default) | exact R1 pins and #83 R1 acceptance only |
+| `candidate` | exact R2 pins and `JSO_AGENT_R2_CANDIDATE_NOT_ACCEPTED` only |
+| `promotion` | exact R2 pins and the fixed #28 `JSO_AGENT_R2_COMPATIBILITY_ACCEPTED` anchor only |
+
+Explicit promotion validation reads the future candidate's canonical filename
+without relaxing the default canonical R1 validator:
+
+```sh
+node IMMUTABLE_R2A/integrations/jso-agent/validate.mjs --mode promotion \
+  --manifest R2B_CANDIDATE/integrations/jso-agent/compatibility.v1.json
+```
+
+The new **reusable-only** `jso-agent-promotion.yml` is intended to be called at
+the exact future **R2A merge SHA**, with `candidate_sha` set to the exact future
+R2B PR head. It does not accept caller-supplied validator code or validator SHA.
+Before checkout, inline workflow code reads the public Actions run's
+`referenced_workflows`, requires its own `jso-agent-promotion.yml@<40-hex SHA>`
+identity and derives the validator checkout SHA from that immutable reference.
+Moving refs, missing/ambiguous/mismatched references, foreign callers, a candidate
+equal to the validator and API failures all fail closed. No token is sent to
+that public read endpoint. The caller must deliberately pin this workflow to
+the reviewed R2A merge commit; passing a candidate SHA never selects the validator.
+
+It checks out the immutable validator and the exact R2B candidate separately.
+The candidate sparse checkout contains **only canonical manifest/profile data**;
+none of its validator, workflow or other code is executed. `prepare-promotion.mjs`
+uses the immutable validator to verify the clean repository/HEAD, exact promotion
+evidence/pins and unchanged profile bytes, then copies those JSON bytes to a new
+external staging directory. Its reserved `compatibility.r2.promotion.json` name
+selects promotion validation when the unchanged paired engine loads it. R1 and
+candidate evidence still fail on that path. There is no runner modification,
+new test selection, substitution or replacement receipt producer.
+
+The workflow compares its engine/profile/deps/skip helper against a separate
+stable `77e89fa...` checkout, runs the existing conformance tests, and executes
+the **full four-pin** R2 composition. Its standard receipt must independently
+verify **512/512, zero failures/skips/TODO/cancellations/gate failures**, exact
+contracts/profile/sources and `productionAuthorization=false`. The receipt's
+harness SHA is the actual immutable R2A validator SHA. A separate data-context
+artifact records the future R2B candidate SHA and raw manifest/profile digests;
+the unchanged standard receipt is not relabelled as a substituted candidate.
+All permissions are read-only, credentials are not persisted, no secrets are
+forwarded and there is no dispatch/write/deployment action.
+
+Adversarial tests exercise all nine manifest/mode combinations, promotion pin
+and evidence drift, the real data-staging path with a deliberately unusable
+candidate validator, and the workflow's actual pre-checkout authority code
+under missing/moving/mismatched/self-certifying references. No R2B branch,
+accepted manifest, promotion run or canonical advancement is performed in R2A.
 
 `verify-engine-identity.mjs` checks fixed SHA256 identities from stable harness
 `77e89fae03202a3d861d6f3e78c8a06666df304d`. It covers `run.mjs`, `reporter.cjs`,

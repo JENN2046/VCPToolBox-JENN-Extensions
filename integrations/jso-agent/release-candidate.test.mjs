@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
+import {execFileSync, spawnSync} from 'node:child_process';
+import {Script} from 'node:vm';
 import {ROOT, COMPONENTS, R2_COMPONENTS, PROFILE_SHA256, loadManifest,
-  validateManifest, validateReleaseCandidate, resolvePlan, sha256} from './validate.mjs';
+  validateManifest, validateReleaseCandidate, validatePromotion, R2_PROMOTION_RECEIPT, resolvePlan, sha256} from './validate.mjs';
+import {preparePromotion} from './prepare-promotion.mjs';
 import {pairedReceipt, cleanEnv, runTestGroup} from './run.mjs';
 import {STABLE_HARNESS, STABLE_FILES, verifyEngineIdentity} from './verify-engine-identity.mjs';
 import {verifyReleaseReceipt} from './verify-release-receipts.mjs';
@@ -13,6 +16,12 @@ const {manifest:r1,profile}=loadManifest();
 const {manifest:r2}=loadManifest(join(ROOT,'compatibility.r2.candidate.json'));
 const clone=value=>structuredClone(value);
 const root=resolve(ROOT,'../..');
+// Synthetic validation fixture only: no accepted R2 manifest is published in R2A.
+const promotion=clone(r2);
+promotion.acceptance.receipt=R2_PROMOTION_RECEIPT;
+promotion.acceptance.result='JSO_AGENT_R2_COMPATIBILITY_ACCEPTED';
+const modes=[['r1',r1,validateManifest,COMPONENTS],['candidate',r2,validateReleaseCandidate,R2_COMPONENTS],
+  ['promotion',promotion,validatePromotion,R2_COMPONENTS]];
 
 test('R2 is an explicit not-accepted four-pin proposal; canonical R1 remains separate and strict',()=>{
   assert.equal(r1.releaseId,'JSO_AGENT_R1');
@@ -27,7 +36,7 @@ test('R2 is an explicit not-accepted four-pin proposal; canonical R1 remains sep
   assert.throws(()=>resolvePlan(r2,{component:'extensions',repository:COMPONENTS.extensions[0],sha:'a'.repeat(40)}),/complete four-pin/);
 });
 
-for (const [label,original,validate,specs] of [['R1',r1,validateManifest,COMPONENTS],['R2',r2,validateReleaseCandidate,R2_COMPONENTS]]) {
+for (const [label,original,validate,specs] of modes) {
   for (const id of Object.keys(specs)) test(`${label} rejects any ${id} pin/repository/branch/contract drift`,()=>{
     for(const field of ['acceptedSha','repository','integrationBranch']) {
       const m=clone(original),c=m.components.find(c=>c.id===id);
@@ -54,11 +63,111 @@ for (const [label,original,validate,specs] of [['R1',r1,validateManifest,COMPONE
   })) test(`${label} fails closed on ${name}`,()=>{const m=clone(original);mutate(m);assert.throws(()=>validate(m));});
 }
 
+for (const [mode,,validate] of modes) for (const [label,manifest] of modes) {
+  test(`${mode} validator ${mode===label?'accepts only':'rejects'} ${label} manifest evidence`,()=>{
+    if (mode===label) assert.equal(validate(clone(manifest)).id,'jso-agent-paired');
+    else assert.throws(()=>validate(clone(manifest)));
+  });
+}
+test('promotion requires the exact reserved #28 receipt, not runtime/candidate/pending evidence',()=>{
+  assert.equal(R2_PROMOTION_RECEIPT,'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28#issuecomment-6436790468');
+  for (const acceptance of [r1.acceptance,r2.acceptance,
+    {...promotion.acceptance,issue:r1.acceptance.issue},
+    {...promotion.acceptance,receipt:r1.acceptance.receipt},
+    {...promotion.acceptance,receipt:R2_PROMOTION_RECEIPT+'?accepted=true'},
+    {...promotion.acceptance,result:'PENDING_R2A_IMMUTABLE_POST_MERGE_RECEIPT'}]) {
+    const manifest=clone(promotion);manifest.acceptance=clone(acceptance);assert.throws(()=>validatePromotion(manifest));
+  }
+});
+test('explicit CLI modes cannot cross-admit manifests; canonical default stays R1',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'r2-modes-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  writeFileSync(join(dir,'profile.v1.json'),readFileSync(join(ROOT,'profile.v1.json')));
+  const path=join(dir,'compatibility.v1.json');
+  for (const [label,manifest] of modes) {
+    writeFileSync(path,JSON.stringify(manifest));
+    for (const [mode] of modes) {
+      const result=spawnSync(process.execPath,[join(ROOT,'validate.mjs'),'--mode',mode,'--manifest',path],{encoding:'utf8'});
+      assert.equal(result.status,mode===label?0:1,result.stderr);
+    }
+    if(label==='r1') assert.equal(loadManifest(path).manifest.releaseId,'JSO_AGENT_R1');
+    else assert.throws(()=>loadManifest(path));
+  }
+  assert.throws(()=>loadManifest(path,'unknown'),/unknown manifest validation mode/);
+});
+
+function candidateFixture(t,manifest=promotion) {
+  const dir=mkdtempSync(join(tmpdir(),'r2-promotion-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const candidate=join(dir,'candidate'),files=join(candidate,'integrations/jso-agent');mkdirSync(files,{recursive:true});
+  writeFileSync(join(files,'compatibility.v1.json'),JSON.stringify(manifest));
+  writeFileSync(join(files,'profile.v1.json'),readFileSync(join(ROOT,'profile.v1.json')));
+  // Candidate code must never be imported/executed by the immutable validator.
+  writeFileSync(join(files,'validate.mjs'),"throw Error('candidate validator executed');\n");
+  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-C',candidate,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  git('init','-q');git('remote','add','origin','https://github.com/'+COMPONENTS.extensions[0]+'.git');
+  git('add','.');git('-c','user.name=R2 fixture','-c','user.email=r2@example.invalid','commit','-qm','synthetic promotion data');
+  return {dir,candidate,files,git,sha:git('rev-parse','HEAD'),out:join(dir,'staging')};
+}
+test('immutable preparation consumes exact clean candidate data and stages the unchanged engine input',t=>{
+  const f=candidateFixture(t),result=preparePromotion(f.candidate,f.sha,f.out);
+  assert.equal(result.candidateSha,f.sha);assert.equal(result.profileSha256,PROFILE_SHA256);
+  assert.deepEqual(readFileSync(result.stagedManifest),readFileSync(join(f.files,'compatibility.v1.json')));
+  assert.deepEqual(loadManifest(result.stagedManifest).manifest,promotion);
+  assert.deepEqual(resolvePlan(loadManifest(result.stagedManifest).manifest),resolvePlan(r2));
+  assert.equal(f.git('status','--porcelain'),'');
+  assert.throws(()=>preparePromotion(f.candidate,f.sha,f.out),/must be new/);
+});
+for (const [label,manifest] of [['r1',r1],['candidate',r2]]) test(`promotion preparation refuses a clean ${label} candidate checkout`,t=>{
+  const f=candidateFixture(t,manifest);assert.throws(()=>preparePromotion(f.candidate,f.sha,f.out));
+});
+test('promotion preparation refuses moving/wrong SHA, wrong repo, dirty data and checkout-local output',t=>{
+  const f=candidateFixture(t);
+  for(const sha of ['main','A'.repeat(40),'a'.repeat(40)]) assert.throws(()=>preparePromotion(f.candidate,sha,f.out));
+  assert.throws(()=>preparePromotion(f.candidate,f.sha,join(f.candidate,'output')),/outside checkouts/);
+  f.git('remote','set-url','origin','https://github.com/unknown/repo.git');
+  assert.throws(()=>preparePromotion(f.candidate,f.sha,f.out),/repository identity/);
+  f.git('remote','set-url','origin','https://github.com/'+COMPONENTS.extensions[0]+'.git');
+  writeFileSync(join(f.files,'profile.v1.json'),'{}');
+  assert.throws(()=>preparePromotion(f.candidate,f.sha,f.out),/dirty/);
+  f.git('add','.');f.git('-c','user.name=R2 fixture','-c','user.email=r2@example.invalid','commit','-qm','bad profile');
+  assert.throws(()=>preparePromotion(f.candidate,f.git('rev-parse','HEAD'),f.out),/profile content digest/);
+});
+
+const promotionWorkflow=readFileSync(join(root,'.github/workflows/jso-agent-promotion.yml'),'utf8');
+const authorityCode=promotionWorkflow.split('// BEGIN PROMOTION AUTHORITY: tested verbatim without network access.')[1]
+  .split('// END PROMOTION AUTHORITY')[0].replace(/^ {10}/gm,'');
+async function authority({references,http=200,candidate='b'.repeat(40),repository=COMPONENTS.extensions[0],id=123}={}) {
+  let output='',request='';const errors=[];
+  const process={env:{CANDIDATE_SHA:candidate,CALLER_REPOSITORY:repository,RUN_ID:'123',GITHUB_OUTPUT:'/fake/output'},exitCode:0};
+  await new Script(authorityCode).runInNewContext({process,AbortSignal,
+    require:name=>{assert.equal(name,'node:fs');return {appendFileSync:(_path,text)=>output+=text};},
+    fetch:async url=>{request=url;return {ok:http===200,status:http,json:async()=>({id,referenced_workflows:references})};},
+    console:{log:()=>{},error:message=>errors.push(message)}});
+  return {output,request,errors,exitCode:process.exitCode};
+}
+const reference=sha=>({path:COMPONENTS.extensions[0]+'/.github/workflows/jso-agent-promotion.yml@'+sha,sha});
+test('reusable promotion workflow derives validator SHA from its own exact referenced workflow',async()=>{
+  const result=await authority({references:[reference('a'.repeat(40))]});
+  assert.equal(result.exitCode,0);assert.equal(result.output,'validator_sha='+'a'.repeat(40)+'\n');
+  assert.equal(result.request,'https://api.github.com/repos/JENN2046/VCPToolBox-JENN-Extensions/actions/runs/123');
+});
+for (const [label,options] of Object.entries({
+  missing:{},moving:{references:[{...reference('a'.repeat(40)),path:reference('main').path}]},
+  mismatch:{references:[{...reference('a'.repeat(40)),path:reference('c'.repeat(40)).path}]},
+  duplicate:{references:[reference('a'.repeat(40)),reference('c'.repeat(40))]},
+  selfCertification:{references:[reference('b'.repeat(40))]},
+  foreign:{references:[{path:'someone/other/.github/workflows/jso-agent-promotion.yml@'+'a'.repeat(40),sha:'a'.repeat(40)}]},
+  movingCandidate:{candidate:'main'},foreignCaller:{repository:'someone/other'},
+  unavailable:{http:403},wrongRun:{references:[reference('a'.repeat(40))],id:124},
+})) test(`promotion workflow authority fails closed: ${label}`,async()=>{
+  const result=await authority(options);assert.equal(result.exitCode,1);assert.equal(result.output,'');assert.equal(result.errors.length,1);
+});
+
 test('changing profile bytes and updating its declared digest cannot bless a new test selection',t=>{
   const dir=mkdtempSync(join(tmpdir(),'r2-profile-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
   const changed=clone(profile);changed.groups[0].files.pop();
   const raw=JSON.stringify(changed);writeFileSync(join(dir,'profile.v1.json'),raw);
-  for(const [m,validate] of [[clone(r1),validateManifest],[clone(r2),validateReleaseCandidate]]) {
+  for(const [,manifest,validate] of modes) {
+    const m=clone(manifest);
     m.testProfile.sha256=sha256(raw);assert.throws(()=>validate(m,dir),/reviewed profile digest/);
   }
 });
@@ -100,6 +209,15 @@ test('standard unmodified producer receipts distinguish immutable R1 control fro
   assert.equal(verifyReleaseReceipt(old,'JSO_AGENT_R1',STABLE_HARNESS).counts.pass,490);
   assert.equal(verifyReleaseReceipt(next,'JSO_AGENT_R2','a'.repeat(40)).counts.pass,512);
   assert.equal(next.candidate,null);assert.equal(next.productionAuthorization,false);
+});
+test('promotion receipt CLI enforces immutable harness, 512 passes and zero skips',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'r2-promotion-receipt-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const path=join(dir,'paired-result.v1.json'),harness='a'.repeat(40),data=receipt(promotion,harness);
+  const run=sha=>spawnSync(process.execPath,[join(ROOT,'verify-release-receipts.mjs'),'--promotion',path,sha],{encoding:'utf8'});
+  writeFileSync(path,JSON.stringify(data));assert.equal(run(harness).status,0);
+  assert.equal(run('b'.repeat(40)).status,1);
+  data.counts.skipped=1;writeFileSync(path,JSON.stringify(data));assert.equal(run(harness).status,1);
+  writeFileSync(path,JSON.stringify(receipt(r1,harness)));assert.equal(run(harness).status,1);
 });
 for(const [name,mutate] of Object.entries({
   release:r=>r.releaseId='JSO_AGENT_R1',status:r=>r.status='FAIL',authority:r=>r.productionAuthorization=true,

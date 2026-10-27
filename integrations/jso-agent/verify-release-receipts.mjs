@@ -48,13 +48,20 @@ export function verifyReleaseReceipt(receipt, releaseId, harnessSha) {
 }
 if (process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    const [r1,r2,harness,...extra]=process.argv.slice(2);
-    requireValue(r1 && r2 && harness && !extra.length, 'usage: verify-release-receipts.mjs r1-receipt r2-receipt exact-validator-sha');
-    for (const [path,id,sha] of [[r1,'JSO_AGENT_R1',STABLE_HARNESS],[r2,'JSO_AGENT_R2',harness]]) {
-      const raw=readFileSync(path), receipt=verifyReleaseReceipt(JSON.parse(raw),id,sha);
-      // Standard receipt data plus the exact raw artifact member digest, visible
-      // in GitHub logs as well as the unchanged uploaded JSON files.
-      console.log(JSON.stringify({releaseId:id,rawReceiptSha256:sha256(raw),receipt}));
+    if (process.argv[2]==='--promotion') {
+      const [,path,harness,...extra]=process.argv.slice(2);
+      requireValue(path && harness && !extra.length, 'usage: verify-release-receipts.mjs --promotion receipt exact-immutable-validator-sha');
+      const raw=readFileSync(path), receipt=verifyReleaseReceipt(JSON.parse(raw),'JSO_AGENT_R2',harness);
+      console.log(JSON.stringify({validationMode:'promotion',rawReceiptSha256:sha256(raw),receipt}));
+    } else {
+      const [r1,r2,harness,...extra]=process.argv.slice(2);
+      requireValue(r1 && r2 && harness && !extra.length, 'usage: verify-release-receipts.mjs r1-receipt r2-receipt exact-validator-sha');
+      for (const [path,id,sha] of [[r1,'JSO_AGENT_R1',STABLE_HARNESS],[r2,'JSO_AGENT_R2',harness]]) {
+        const raw=readFileSync(path), receipt=verifyReleaseReceipt(JSON.parse(raw),id,sha);
+        // Standard receipt data plus the exact raw artifact member digest, visible
+        // in GitHub logs as well as the unchanged uploaded JSON files.
+        console.log(JSON.stringify({releaseId:id,rawReceiptSha256:sha256(raw),receipt}));
+      }
     }
   } catch(error) { console.error(error.message);process.exitCode=1; }
 }

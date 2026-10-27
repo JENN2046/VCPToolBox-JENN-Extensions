@@ -18,6 +18,7 @@ export const R2_COMPONENTS = Object.freeze(Object.fromEntries(Object.entries(COM
     jso:'bfaf4dfe1c6558beb0ff9113990946aa85a257a3',
   }[id], ...value.slice(2)]])));
 export const PROFILE_SHA256 = 'd1e6e5e16f83216053b6131ccc2d1dd7996ea019edd734ffde226fa7856e38b6';
+export const R2_PROMOTION_RECEIPT = 'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28#issuecomment-6436790468';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export function requireValue(value, message) { if (!value) throw Error(message); }
 export const isSha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
@@ -37,6 +38,13 @@ export function validateReleaseCandidate(manifest, directory = ROOT) {
     issue:'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28',
     receipt:'https://github.com/JENN2046/jenn-shooting-operations/issues/83#issuecomment-6423599717',
     result:'JSO_AGENT_R2_CANDIDATE_NOT_ACCEPTED',
+  });
+}
+export function validatePromotion(manifest, directory = ROOT) {
+  return validateRelease(manifest, directory, 'JSO_AGENT_R2', R2_COMPONENTS, {
+    issue:'https://github.com/JENN2046/VCPToolBox-JENN-Extensions/issues/28',
+    receipt:R2_PROMOTION_RECEIPT,
+    result:'JSO_AGENT_R2_COMPATIBILITY_ACCEPTED',
   });
 }
 function validateRelease(manifest, directory, releaseId, components, acceptance) {
@@ -101,12 +109,27 @@ export function resolvePlan(manifest, candidate = null) {
   return manifest.components.map(c => ({component:c.id, repository:c.repository,
     sha: candidate?.component === c.id ? candidate.sha : c.acceptedSha, source: candidate?.component === c.id ? 'candidate' : 'accepted'}));
 }
-export function loadManifest(path = resolve(ROOT, 'compatibility.v1.json')) {
+export function loadManifest(path = resolve(ROOT, 'compatibility.v1.json'), mode = null) {
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
-  const validate = basename(path) === 'compatibility.r2.candidate.json' ? validateReleaseCandidate : validateManifest;
+  // The unchanged runner has a manifest-path input. Reserved staging filenames
+  // select a validation mode without changing its execution/receipt semantics.
+  mode ??= ({'compatibility.r2.candidate.json':'candidate', 'compatibility.r2.promotion.json':'promotion'})[basename(path)] || 'r1';
+  const validators = {r1:validateManifest, candidate:validateReleaseCandidate, promotion:validatePromotion};
+  requireValue(Object.hasOwn(validators, mode), 'unknown manifest validation mode');
+  const validate = validators[mode];
   return {manifest, profile:validate(manifest, dirname(resolve(path)))};
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  try { const {manifest, profile} = loadManifest(process.argv[2]); console.log(JSON.stringify({valid:true, releaseId:manifest.releaseId, profile:profile.id, version:profile.version})); }
+  try {
+    const args=process.argv.slice(2);
+    let path, mode;
+    if (args.length<=1 && !args[0]?.startsWith('--')) [path]=args;
+    else {
+      requireValue(args.length===4 && args[0]==='--mode' && args[2]==='--manifest', 'usage: validate.mjs [manifest] | --mode r1|candidate|promotion --manifest path');
+      mode=args[1];path=args[3];
+    }
+    const {manifest, profile} = loadManifest(path, mode);
+    console.log(JSON.stringify({valid:true, releaseId:manifest.releaseId, profile:profile.id, version:profile.version}));
+  }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }
