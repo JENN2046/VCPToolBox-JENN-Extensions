@@ -14,7 +14,12 @@ export const STABLE_FILES = Object.freeze({
   'integrations/jso-agent/deps/package-lock.json':'e564ad1366177a6af060a0c4771c0d209f1d61fee980e2c3f40c62b47acb3812',
   'integrations/jso-agent/verify-required-skip.mjs':'d68a19c8a3eac7d3abfad2bc2d07bed100660609d4c686eecca519dafdf82b46',
   '.github/workflows/jso-agent-paired.yml':'aed2001d9b065e3e41eb54ac1bc7c706107bbf690eb8edbe6f453bfda01d0746',
-  'integrations/jso-agent/compatibility.v1.json':'055802b95ecf6223ef664fcf399f23776806a2bb11367f55e56c444ebf19f5fe',
+});
+// Release metadata intentionally advances in R2B. It has its own exact hashes;
+// none of the stable execution-engine/profile/dependency hashes above changes.
+export const RELEASE_FILES = Object.freeze({
+  'integrations/jso-agent/compatibility.v1.json':'a591e5c91874d8071756a09aba453ca558752a76f595ba08c6b30becbf56f28a',
+  'integrations/jso-agent/compatibility.r1.legacy.json':'055802b95ecf6223ef664fcf399f23776806a2bb11367f55e56c444ebf19f5fe',
 });
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 function bytes(root, path) {
@@ -28,7 +33,12 @@ export function verifyEngineIdentity(root = ROOT, reference = null) {
     if (createHash('sha256').update(actual).digest('hex') !== digest) throw Error(`stable bytes changed: ${path}`);
     if (reference && !actual.equals(bytes(reference,path))) throw Error(`immutable reference mismatch: ${path}`);
   }
-  return {stableHarness:STABLE_HARNESS, files:STABLE_FILES};
+  for (const [path, digest] of Object.entries(RELEASE_FILES)) {
+    if (createHash('sha256').update(bytes(root,path)).digest('hex') !== digest) throw Error(`release bytes changed: ${path}`);
+  }
+  if (reference && !bytes(root,'integrations/jso-agent/compatibility.r1.legacy.json')
+    .equals(bytes(reference,'integrations/jso-agent/compatibility.v1.json'))) throw Error('legacy R1 reference mismatch');
+  return {stableHarness:STABLE_HARNESS, files:STABLE_FILES, releaseFiles:RELEASE_FILES};
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {

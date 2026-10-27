@@ -5,34 +5,40 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {execFileSync, spawnSync} from 'node:child_process';
 import {Script} from 'node:vm';
-import {ROOT, COMPONENTS, R2_COMPONENTS, PROFILE_SHA256, loadManifest,
-  validateManifest, validateReleaseCandidate, validatePromotion, R2_PROMOTION_RECEIPT, resolvePlan, sha256} from './validate.mjs';
+import {ROOT, COMPONENTS, LEGACY_R1_COMPONENTS, R2_COMPONENTS, PROFILE_SHA256, loadManifest,
+  validateManifest, validateLegacyR1, validateReleaseCandidate, validatePromotion, R2_PROMOTION_RECEIPT, resolvePlan, sha256} from './validate.mjs';
 import {preparePromotion} from './prepare-promotion.mjs';
 import {pairedReceipt, cleanEnv, runTestGroup} from './run.mjs';
-import {STABLE_HARNESS, STABLE_FILES, verifyEngineIdentity} from './verify-engine-identity.mjs';
+import {STABLE_HARNESS, STABLE_FILES, RELEASE_FILES, verifyEngineIdentity} from './verify-engine-identity.mjs';
 import {verifyReleaseReceipt} from './verify-release-receipts.mjs';
 
-const {manifest:r1,profile}=loadManifest();
+const {manifest:canonical,profile}=loadManifest();
+const {manifest:r1}=loadManifest(join(ROOT,'compatibility.r1.legacy.json'),'r1');
 const {manifest:r2}=loadManifest(join(ROOT,'compatibility.r2.candidate.json'));
 const clone=value=>structuredClone(value);
 const root=resolve(ROOT,'../..');
-// Synthetic validation fixture only: no accepted R2 manifest is published in R2A.
-const promotion=clone(r2);
-promotion.acceptance.receipt=R2_PROMOTION_RECEIPT;
-promotion.acceptance.result='JSO_AGENT_R2_COMPATIBILITY_ACCEPTED';
-const modes=[['r1',r1,validateManifest,COMPONENTS],['candidate',r2,validateReleaseCandidate,R2_COMPONENTS],
-  ['promotion',promotion,validatePromotion,R2_COMPONENTS]];
+// Promotion and canonical loading must agree on the same frozen accepted data.
+// Their authority differs: R2B certification executes the immutable R2A workflow.
+const promotion=clone(canonical);
+const modes=[['r1',r1,validateLegacyR1,LEGACY_R1_COMPONENTS],['candidate',r2,validateReleaseCandidate,R2_COMPONENTS],
+  ['promotion',promotion,validatePromotion,R2_COMPONENTS],['canonical',canonical,validateManifest,COMPONENTS]];
+const admitted=(mode,label)=>mode===label || ['canonical','promotion'].includes(mode) && ['canonical','promotion'].includes(label);
 
-test('R2 is an explicit not-accepted four-pin proposal; canonical R1 remains separate and strict',()=>{
+test('canonical R2 is accepted while legacy R1 and the R2 proposal remain separate and strict',()=>{
   assert.equal(r1.releaseId,'JSO_AGENT_R1');
   assert.equal(r2.releaseId,'JSO_AGENT_R2');
   assert.equal(r2.acceptance.result,'JSO_AGENT_R2_CANDIDATE_NOT_ACCEPTED');
+  assert.equal(canonical.acceptance.result,'JSO_AGENT_R2_COMPATIBILITY_ACCEPTED');
+  assert.deepEqual(canonical,promotion);
   assert.deepEqual(r2.testProfile,r1.testProfile);
   assert.equal(r2.testProfile.sha256,PROFILE_SHA256);
   assert.deepEqual(Object.fromEntries(resolvePlan(r2).map(c=>[c.component,c.sha])),
     Object.fromEntries(Object.entries(R2_COMPONENTS).map(([id,spec])=>[id,spec[1]])));
   assert.throws(()=>validateManifest(r2));
+  assert.throws(()=>validateManifest(r1));
   assert.throws(()=>validateReleaseCandidate(r1));
+  assert.throws(()=>validateReleaseCandidate(canonical));
+  assert.throws(()=>validateLegacyR1(canonical));
   assert.throws(()=>resolvePlan(r2,{component:'extensions',repository:COMPONENTS.extensions[0],sha:'a'.repeat(40)}),/complete four-pin/);
 });
 
@@ -64,8 +70,8 @@ for (const [label,original,validate,specs] of modes) {
 }
 
 for (const [mode,,validate] of modes) for (const [label,manifest] of modes) {
-  test(`${mode} validator ${mode===label?'accepts only':'rejects'} ${label} manifest evidence`,()=>{
-    if (mode===label) assert.equal(validate(clone(manifest)).id,'jso-agent-paired');
+  test(`${mode} validator ${admitted(mode,label)?'accepts':'rejects'} ${label} manifest evidence`,()=>{
+    if (admitted(mode,label)) assert.equal(validate(clone(manifest)).id,'jso-agent-paired');
     else assert.throws(()=>validate(clone(manifest)));
   });
 }
@@ -79,7 +85,7 @@ test('promotion requires the exact reserved #28 receipt, not runtime/candidate/p
     const manifest=clone(promotion);manifest.acceptance=clone(acceptance);assert.throws(()=>validatePromotion(manifest));
   }
 });
-test('explicit CLI modes cannot cross-admit manifests; canonical default stays R1',t=>{
+test('explicit CLI modes reject wrong release/evidence; canonical default accepts only accepted R2',t=>{
   const dir=mkdtempSync(join(tmpdir(),'r2-modes-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
   writeFileSync(join(dir,'profile.v1.json'),readFileSync(join(ROOT,'profile.v1.json')));
   const path=join(dir,'compatibility.v1.json');
@@ -87,9 +93,9 @@ test('explicit CLI modes cannot cross-admit manifests; canonical default stays R
     writeFileSync(path,JSON.stringify(manifest));
     for (const [mode] of modes) {
       const result=spawnSync(process.execPath,[join(ROOT,'validate.mjs'),'--mode',mode,'--manifest',path],{encoding:'utf8'});
-      assert.equal(result.status,mode===label?0:1,result.stderr);
+      assert.equal(result.status,admitted(mode,label)?0:1,result.stderr);
     }
-    if(label==='r1') assert.equal(loadManifest(path).manifest.releaseId,'JSO_AGENT_R1');
+    if(['canonical','promotion'].includes(label)) assert.equal(loadManifest(path).manifest.releaseId,'JSO_AGENT_R2');
     else assert.throws(()=>loadManifest(path));
   }
   assert.throws(()=>loadManifest(path,'unknown'),/unknown manifest validation mode/);
@@ -176,22 +182,35 @@ test('candidate contents under the canonical filename cannot advance the default
   const dir=mkdtempSync(join(tmpdir(),'r2-canonical-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
   writeFileSync(join(dir,'profile.v1.json'),readFileSync(join(ROOT,'profile.v1.json')));
   writeFileSync(join(dir,'compatibility.v1.json'),JSON.stringify(r2));
-  assert.throws(()=>loadManifest(join(dir,'compatibility.v1.json')),/unsupported schema\/release/);
+  assert.throws(()=>loadManifest(join(dir,'compatibility.v1.json')),/malformed\/unaccepted acceptance evidence/);
   writeFileSync(join(dir,'compatibility.r2.candidate.json'),JSON.stringify(r2));
   assert.equal(loadManifest(join(dir,'compatibility.r2.candidate.json')).manifest.releaseId,'JSO_AGENT_R2');
+  writeFileSync(join(dir,'compatibility.r2.candidate.json'),JSON.stringify(canonical));
+  assert.throws(()=>loadManifest(join(dir,'compatibility.r2.candidate.json')),/malformed\/unaccepted acceptance evidence/);
+  writeFileSync(join(dir,'compatibility.r2.promotion.json'),JSON.stringify(r2));
+  assert.throws(()=>loadManifest(join(dir,'compatibility.r2.promotion.json')),/malformed\/unaccepted acceptance evidence/);
 });
 
-test('stable engine, profile, deps, skip helper, reusable workflow and canonical R1 bytes are pinned',()=>{
+test('accepted R2 retains the existing one-component candidate plan without admitting changed release pins',()=>{
+  const candidate={component:'jso',repository:COMPONENTS.jso[0],sha:'a'.repeat(40)};
+  const plan=resolvePlan(canonical,candidate);
+  assert.equal(plan.filter(c=>c.source==='candidate').length,1);
+  for(const c of plan) assert.equal(c.sha,c.component==='jso'?candidate.sha:COMPONENTS[c.component][1]);
+  const drift=clone(canonical);drift.components[0].acceptedSha='b'.repeat(40);
+  assert.throws(()=>resolvePlan(drift,candidate),/exact pin changed/);
+});
+
+test('stable engine/profile/deps/skip/workflow bytes and exact R2/legacy release metadata are pinned',()=>{
   assert.equal(verifyEngineIdentity().stableHarness,STABLE_HARNESS);
   assert.equal(STABLE_HARNESS,'77e89fae03202a3d861d6f3e78c8a06666df304d');
   assert.equal(STABLE_FILES['integrations/jso-agent/profile.v1.json'],PROFILE_SHA256);
 });
-for(const path of Object.keys(STABLE_FILES)) test(`engine guard rejects byte drift in ${path}`,t=>{
+for(const path of Object.keys({...STABLE_FILES,...RELEASE_FILES})) test(`identity guard rejects byte drift in ${path}`,t=>{
   const dir=mkdtempSync(join(tmpdir(),'r2-engine-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
-  for(const p of Object.keys(STABLE_FILES)) {mkdirSync(dirname(join(dir,p)),{recursive:true});writeFileSync(join(dir,p),readFileSync(join(root,p)));}
-  verifyEngineIdentity(dir,root);
+  for(const p of Object.keys({...STABLE_FILES,...RELEASE_FILES})) {mkdirSync(dirname(join(dir,p)),{recursive:true});writeFileSync(join(dir,p),readFileSync(join(root,p)));}
+  verifyEngineIdentity(dir);
   writeFileSync(join(dir,path),Buffer.concat([readFileSync(join(dir,path)),Buffer.from('\n')]));
-  assert.throws(()=>verifyEngineIdentity(dir,root),/stable bytes changed/);
+  assert.throws(()=>verifyEngineIdentity(dir),/(stable|release) bytes changed/);
   rmSync(join(dir,path));symlinkSync(join(root,path),join(dir,path));
   assert.throws(()=>verifyEngineIdentity(dir),/must be regular/);
 });
