@@ -24,7 +24,7 @@ async function runNative(args,config,env,invocation){
   const authority=new ApprovalReceiptAuthority();const lease=Object.freeze({sessionId:principal.subjectId,expiresAt:Date.now()+30000});let live=true;
   authority.setHumanClientAdmission({validLease:l=>live&&l===lease&&Date.now()<l.expiresAt,productionHuman:l=>live&&l===lease&&principal.role==='administrator'});
   const context=Object.freeze({});authority.bindHttpRequest(context,lease);let event=null;
-  const delegate=({source,command},cancel=false)=>ownerRequest('/api/v2/agent/owner-delegation',{sourceRef:source.id,assistantSubjectId:env.JSO_ASSISTANT_SUBJECT_ID,command,cancel});
+  const delegate=({source,command,action='reschedule'},cancel=false)=>ownerRequest('/api/v2/agent/owner-delegation',{sourceRef:source.id,assistantSubjectId:env.JSO_ASSISTANT_SUBJECT_ID,action,command,cancel});
   host=createConversationHost({config,journalGuard:()=>{if(!held)throw Error('JOURNAL_LOCK_REQUIRED');},fetchImpl:(...args)=>outside(async()=>{const response=await invocation.fetchImpl(...args);const value=await response.json();return {status:response.status,json:async()=>value};}),authority,readNativeEvent:c=>c===context?event:null,journalPath:file,sessionCurrent:async()=>{live=await verify();return live;},delegate:r=>delegate(r),cancelDelegate:r=>delegate(r,true),
    refreshChart:async state=>{const {chartData,createChartCommand}=await import('./chart.mjs');const data=chartData(state,new Date().toISOString());return {ok:true,projection:{version:[state.revisions.scheduleRevision,state.revisions.projectionRevision],create:createChartCommand(data),data}};}});
   const p=args.payload||{};

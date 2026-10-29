@@ -8,7 +8,15 @@ ToolBox 必须有最小宿主修改：server.js 路由注册、Plugin.js 每调�
 
 配置默认只读；完整本地链要求显式 native-direct-and-confirm、资源/分钟范围、私有 journal 路径、已有 assistant subject 与默认资源，以及客户端通用 binding。进程异常遗留 journal 锁会拒绝继续写入，需操作者核查无活动进程后恢复；不自动破锁。未知提交仅查原 opID，不重复提交。
 
-最终派发前按当前资源/分钟配置重验持久提案及prepared操作；超限需重新提案，不修改已展示命令。unknown/dispatching仍只查原ID回执。配置层只接收资源可证明且在范围内的reschedule回执，其余回执失败关闭。
+最终派发前按当前资源/分钟配置重验持久提案及prepared操作；超限需重新提案，不修改已展示命令。unknown/dispatching仍只查原ID回执。配置层分别验证 reschedule 与完整采用的 proposalDecision 回执；后者必须带原 decisionId、明确的全部 resourceScope 和 decisionCommandDigest，缺失即拒绝。
+
+R2 候选的普通消息提案使用单个顶层 `vcp-tool-proposal` 块：
+`{"tool":"JennShootingOperations","payload":{"action":"adopt_proposal","planningWindowStart":"<RFC3339>","planningWindowEnd":"<RFC3339>"}}`。
+宿主提供资源并新建生成与决定 ID。`JSO_NATIVE_REQUEST_IDS` 必须由操作者配置为已核实的 synthetic/non-customer 订单 ID；未配置则禁止采用。生成器复用现有完整算法，若返回白名单外项目则拒绝整个方案，不能裁剪后冒充完整采用。需要更窄候选选择时须先扩展业务生成契约，不使用部分采用绕过。
+
+展示包含全部订单、资源及北京时间起止，后续原生输入才可确认。派发前重新生成并核对 preview proof 与全部项目，再检查当前白名单和五分钟期限。凭据代理、Owner 委托与 JSO 必须一起支持新动作；模型/stdin 采用仍拒绝。未知结果仅按原 decisionId 查回执，核对方案 ID、决定摘要、完整选择与采用项目，不重发。
+
+旧 journal 未标 action 的操作仍按改期解释。不得用旧版会话写入器处理新采用 journal；回退时关闭写入、保留兼容的只读核对组件，不覆盖 journal 或业务库。新增跨仓库检查为 JSO 的 `node --test tests/support/r2-native-adoption.integration.mjs`，须显式设置 `JSO_EXTENSIONS_ROOT` 和 `JSO_TOOLBOX_ROOT`。不更改冻结 paired profile、已接受版本 pin 或生产准入。
 
 先前人工rev8/11验收属于修复前提交；本轮合成回归不构成新版人工或模型验收。
 

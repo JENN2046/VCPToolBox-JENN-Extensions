@@ -1,6 +1,6 @@
 'use strict';
 const {createAgentAdapter}=require('./index.cjs');
-const READ_COMMANDS=new Set(['read_state','read_receipt','preview_calendar','preview_shift','propose_reschedule']);
+const READ_COMMANDS=new Set(['read_state','read_receipt','preview_calendar','preview_shift','propose_reschedule','generate_proposal']);
 const VCP_ARGUMENT_KEYS=new Set(['command','payload_json','maid','valet']);
 function normalizeConfiguredArguments(args){
  if(!args||Object.getPrototypeOf(args)!==Object.prototype||!Object.hasOwn(args,'command')
@@ -26,7 +26,9 @@ function parseConfig(env){
  if(!['read-only','native-direct-and-confirm'].includes(policy))throw Error('JSO_CALL_POLICY_INVALID');
  const maxMinutes=Number(env.JSO_MAX_SHIFT_MINUTES||240);
  if(!Number.isSafeInteger(maxMinutes)||maxMinutes<1||maxMinutes>1439)throw Error('JSO_SHIFT_LIMIT_INVALID');
- return Object.freeze({endpoint,token,resources:Object.freeze(resources),policy,maxMinutes});
+ const requestIds=String(env.JSO_NATIVE_REQUEST_IDS||'').split(',').map(s=>s.trim()).filter(Boolean);
+ if(new Set(requestIds).size!==requestIds.length||requestIds.some(s=>!/^[A-Za-z0-9_-]{1,160}$/.test(s)))throw Error('JSO_REQUEST_SCOPE_INVALID');
+ return Object.freeze({endpoint,token,resources:Object.freeze(resources),policy,maxMinutes,requestIds:Object.freeze(requestIds)});
 }
 function createConfiguredAdapter(config,{fetchImpl=fetch}={}){
  const transport=createAgentAdapter({endpoint:config.endpoint,token:config.token,fetchImpl});
@@ -42,10 +44,15 @@ function createConfiguredAdapter(config,{fetchImpl=fetch}={}){
    if(!Array.isArray(requested)||!requested.length||requested.some(id=>!config.resources.includes(id)))return {ok:false,code:'FORBIDDEN'};
    payload={...payload,resourceScope:requested};
   }
+  if(args.command==='generate_proposal'&&(!Array.isArray(payload.resourceScope)||!payload.resourceScope.length||payload.resourceScope.some(id=>!config.resources.includes(id))))return {ok:false,code:'FORBIDDEN'};
   if(payload.resourceId!==undefined&&!config.resources.includes(payload.resourceId))return {ok:false,code:'FORBIDDEN'};
   if(args.command==='preview_shift'&&(!Number.isSafeInteger(payload.minutes)||Math.abs(payload.minutes)>config.maxMinutes||payload.minutes===0))return {ok:false,code:'SHIFT_LIMIT'};
   const result=await transport.call({command:args.command,payload_json:JSON.stringify(payload)});
-  if(args.command==='read_receipt'&&result.ok===true&&(result.kind!=='reschedule'||!config.resources.includes(result.receipt?.resourceId)))return {ok:false,code:'FORBIDDEN'};
+  if(args.command==='read_receipt'&&result.ok===true){
+   const scopedMove=result.kind==='reschedule'&&result.receipt?.operationId===payload.operationId&&config.resources.includes(result.receipt?.resourceId);
+   const scopedDecision=result.kind==='proposalDecision'&&result.receipt?.decisionId===payload.operationId&&Array.isArray(result.resourceScope)&&result.resourceScope.length>0&&new Set(result.resourceScope).size===result.resourceScope.length&&result.resourceScope.every(id=>config.resources.includes(id))&&result.receipt?.decisionType==='accept'&&/^sha256:[a-f0-9]{64}$/.test(result.receipt?.decisionCommandDigest);
+   if(!scopedMove&&!scopedDecision)return {ok:false,code:'FORBIDDEN'};
+  }
   return result;
  }};
 }

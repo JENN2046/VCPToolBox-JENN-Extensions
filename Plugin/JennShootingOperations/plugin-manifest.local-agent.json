@@ -20,7 +20,8 @@
     "JSO_MAX_SHIFT_MINUTES": "integer",
     "JSO_JOURNAL_PATH": "string",
     "JSO_ASSISTANT_SUBJECT_ID": "string",
-    "JSO_DEFAULT_RESOURCE_ID": "string"
+    "JSO_DEFAULT_RESOURCE_ID": "string",
+    "JSO_NATIVE_REQUEST_IDS": "string"
   },
   "capabilities": {
     "invocationCommands": [
@@ -36,8 +37,13 @@
       },
       {
         "commandIdentifier": "read_receipt",
-        "description": "只读核对原操作回执，不重新提交。参数：command（必填）固定为 read_receipt；payload_json（必填）为 JSON 对象字符串 {\"operationId\":\"<原操作ID>\"}，必须使用真实原ID，不得生成新ID重试。可选 maid/valet 的署名规则同 read_state，不参与授权。仅接受资源范围内的 reschedule 回执。",
+        "description": "只读核对原操作回执，不重新提交。参数：command（必填）固定为 read_receipt；payload_json（必填）为 JSON 对象字符串 {\"operationId\":\"<原操作ID>\"}，必须使用真实原ID，不得生成新ID重试。可选 maid/valet 的署名规则同 read_state，不参与授权。仅接受资源范围内的 reschedule 回执。 Full-adoption proposalDecision receipts additionally require explicit complete resource scope and the original decisionId. Unknown outcomes must only query the original operation ID; never automatically retry.",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」JennShootingOperations「末」,\ncommand:「始」read_receipt「末」,\npayload_json:「始」{\"operationId\":\"<原操作ID>\"}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "generate_proposal",
+        "description": "Read-only deterministic proposal preview. payload_json requires operationId, planningWindowStart, planningWindowEnd and resourceScope from authoritative state. To request full adoption presentation, output one top-level fenced vcp-tool-proposal block with {\"tool\":\"JennShootingOperations\",\"payload\":{\"action\":\"adopt_proposal\",\"planningWindowStart\":\"<RFC3339>\",\"planningWindowEnd\":\"<RFC3339>\"}}. The host supplies the configured resource, creates fresh operation IDs, checks the operator-approved synthetic request allowlist, and displays every proposed item. Only later native human confirmation can execute. Model/stdin adopt_proposal is forbidden; partial adoption is unsupported.",
+        "example": "command=generate_proposal; payload_json must be the exact existing generation command JSON."
       }
     ]
   },

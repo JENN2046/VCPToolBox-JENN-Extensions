@@ -1,5 +1,7 @@
 'use strict';
 const {ConversationService,parseShift}=require('./service.cjs');
+const {actionOf,resourceOf,canonical}=require('./operations.cjs');
+const {adoptionAllowed}=require('./adoption.cjs');
 const {createAgentAdapter}=require('../JsoAgentAdapter/index.cjs');
 const {createConfiguredAdapter}=require('../JsoAgentAdapter/config.cjs');
 // Trusted composition only, never exported as a model/stdin command. Reuses the host's
@@ -10,33 +12,50 @@ function createConversationHost({config,authority,readNativeEvent,delegate,cance
  const safe=createConfiguredAdapter(config,{fetchImpl});
  const service=new ConversationService({journalPath,journalGuard,clock,
   tool:args=>agent.call(args),verifyOwner:async()=>true,refreshChart,
-  ownerCancel:operation=>cancelDelegate({source:service.journal.data.sources[operation.sourceId],command:operation.proposal.command}),
+  ownerCancel:operation=>cancelDelegate({action:actionOf(operation.proposal),source:service.journal.data.sources[operation.sourceId],command:operation.proposal.command}),
   ownerAuthorize:async operation=>{
-   const {command,before}=operation.proposal;
+   const {command,before}=operation.proposal,action=actionOf(operation.proposal),resourceId=resourceOf(operation.proposal);
+   if(!['reschedule','adopt_proposal'].includes(action))return {ok:false,code:'INVALID_ACTION'};
+   if(action==='adopt_proposal'){
+    if(!adoptionAllowed(operation.proposal,config))return {ok:false,code:'PROPOSAL_OUTSIDE_TEST_SCOPE'};
+    const latest=await service.call('generate_proposal',command.generationCommand);
+    if(!latest.ok)return latest;
+    if(!latest.preview||latest.preview.proposalId!==command.decision.proposalId
+     ||canonical(latest.preview.proposedItems)!==canonical(operation.proposal.items)
+     ||Object.entries(command.expectedPreview).some(([key,value])=>latest.preview[key]!==value))return {ok:false,code:'SCHEDULING_PREVIEW_CHANGED'};
+    if(!Number.isFinite(operation.proposal.expiresAt)||operation.proposal.expiresAt<=(clock?.()||new Date()).getTime())return {ok:false,code:'PROPOSAL_EXPIRED'};
+   }else{
    if(!config.resources.includes(command.resourceId))return {ok:false,code:'FORBIDDEN'};
    const minutes=(Date.parse(command.plannedStart)-Date.parse(before?.plannedStart))/60000;
    const endMinutes=(Date.parse(command.plannedEnd)-Date.parse(before?.plannedEnd))/60000;
    if(!Number.isSafeInteger(minutes)||minutes===0||minutes!==endMinutes||Math.abs(minutes)>config.maxMinutes)return {ok:false,code:'SHIFT_LIMIT'};
+   }
    const context=contexts.get(operation.sourceId),event=readNativeEvent(context);
    const source=service.journal.data.sources[operation.sourceId];
-   if(!event||!source||event.messageId!==source.id||event.text!==source.text||event.conversationId!==source.conversationId||!authority.isHuman(context)||!await sessionCurrent(context,operation.proposal.command.resourceId))return {ok:false,code:'TRUSTED_SESSION_REQUIRED'};
+   if(!event||!source||event.messageId!==source.id||event.text!==source.text||event.conversationId!==source.conversationId||!authority.isHuman(context)||!await sessionCurrent(context,resourceId))return {ok:false,code:'TRUSTED_SESSION_REQUIRED'};
    if(operation.cancelled)return {ok:false,code:'CANCELLED'};
-   const payload={command:'reschedule',requestId:operation.id,sourceId:source.id,conversationId:source.conversationId,schedule:operation.proposal.command};
-   const record=authority.snapshot('JennShootingOperations',payload,{requiresApproval:true,matchedRule:'JennShootingOperations:reschedule',matchedCommand:'reschedule'},{enabled:true});
+   const payload={command:action,requestId:operation.id,sourceId:source.id,conversationId:source.conversationId,schedule:operation.proposal.command};
+   const record=authority.snapshot('JennShootingOperations',payload,{requiresApproval:true,matchedRule:'JennShootingOperations:'+action,matchedCommand:action},{enabled:true});
    const intent=authority.attestIntent(record,{decision:'approve',hostApprovalRequestId:source.id,targetDigest:record.argsDigest},context);
    const handle=authority.approve(record,intent),invocation={};authority.bindInvocation(handle,invocation,payload);
    try{
-    const receipt=authority.verifyAuthorization({toolName:'JennShootingOperations',command:'reschedule',requestId:operation.id,payload},invocation);
+    const receipt=authority.verifyAuthorization({toolName:'JennShootingOperations',command:action,requestId:operation.id,payload},invocation);
     // The receiving adapter must independently resolve this SAME session to existing
     // JSO permissions. This callback is host construction, never user/model JSON.
-    return await delegate({context,source,command:operation.proposal.command,receipt});
+    return await delegate({action,context,source,command:operation.proposal.command,receipt});
    }finally{authority.finishInvocation(invocation);}
   }
  });
  return {
   reloadJournal:()=>service.journal.reload(),
   call:args=>safe.call(args),
-  async propose({conversationId,messageId,scheduleItemId,resourceId,minutes}){
+  async propose({conversationId,messageId,scheduleItemId,resourceId,minutes,action='reschedule',planningWindowStart,planningWindowEnd}){
+   if(config.policy!=='native-direct-and-confirm')return {ok:false,code:'READ_ONLY_POLICY'};
+   if(action==='adopt_proposal'){
+    if(!config.resources.includes(resourceId))return {ok:false,code:'FORBIDDEN'};
+    return service.proposeAdoption({conversationId,messageId,resourceId,planningWindowStart,planningWindowEnd,config});
+   }
+   if(action!=='reschedule')return {ok:false,code:'INVALID_ACTION'};
    if(!config.resources.includes(resourceId))return {ok:false,code:'FORBIDDEN'};
    if(!Number.isSafeInteger(minutes)||minutes===0||Math.abs(minutes)>config.maxMinutes)return {ok:false,code:'SHIFT_LIMIT'};
    return service.propose({conversationId,messageId,scheduleItemId,resourceId,minutes});
