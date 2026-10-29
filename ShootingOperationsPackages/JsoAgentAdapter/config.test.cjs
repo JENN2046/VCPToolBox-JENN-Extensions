@@ -14,7 +14,7 @@ test('config supplies read scope and denies model writes even with native policy
  assert.equal((await adapter.call({command:'preview_shift',payload_json:'{"resourceId":"R1","minutes":241}'})).code,'SHIFT_LIMIT');assert.equal(calls.length,1);
 });
 test('receipt scope must be a permitted reschedule, never inferred from missing scope',async()=>{
- for(const value of [{ok:true,kind:'reschedule',receipt:{resourceId:'R1'}},{ok:true,kind:'reschedule',receipt:{resourceId:'OTHER'}},{ok:true,kind:'reschedule',receipt:{}},{ok:true,kind:'reschedule',receipt:{resourceId:''}},{ok:true,kind:'reschedule',receipt:{resourceId:null}},{ok:true,kind:'proposalDecision',receipt:{}},{ok:true,kind:'proposalGeneration',receipt:{}},{ok:false,code:'OPERATION_NOT_FOUND'}]){
+ for(const value of [{ok:true,kind:'reschedule',receipt:{operationId:'SYNTHETIC',resourceId:'R1'}},{ok:true,kind:'reschedule',receipt:{operationId:'SYNTHETIC',resourceId:'OTHER'}},{ok:true,kind:'reschedule',receipt:{}},{ok:true,kind:'reschedule',receipt:{operationId:'SYNTHETIC',resourceId:''}},{ok:true,kind:'reschedule',receipt:{operationId:'SYNTHETIC',resourceId:null}},{ok:true,kind:'proposalDecision',receipt:{}},{ok:true,kind:'proposalGeneration',receipt:{}},{ok:false,code:'OPERATION_NOT_FOUND'}]){
  const adapter=createConfiguredAdapter(parseConfig(env),{fetchImpl:async()=>({status:200,json:async()=>value})});const result=await adapter.call({command:'read_receipt',payload_json:'{"operationId":"SYNTHETIC"}'});
  if(!value.ok)assert.equal(result.code,value.code);else assert.equal(result.ok,value.kind==='reschedule'&&value.receipt.resourceId==='R1');
  }
@@ -108,4 +108,15 @@ test('manifest read_state calls survive the actual VCP parser and configured ada
  for(const text of examples){const parsed=Parser.parse(text);assert.equal(parsed.length,1);assert.equal(parsed[0].name,'JennShootingOperations');assert.equal((await adapter.call(parsed[0].args)).ok,true);}
  assert.equal(calls.length,3);
  for(const call of calls){assert.deepEqual(Object.keys(call.body).sort(),['command','payload_json']);assert.deepEqual(JSON.parse(call.body.payload_json),{resourceScope:['R1','R2']});}
+});
+
+test('adoption receipts require the original decision id, explicit complete resource scope and decision digest',async()=>{
+ const valid={ok:true,kind:'proposalDecision',resourceScope:['R1'],receipt:{decisionId:'ORIGINAL',decisionType:'accept',decisionCommandDigest:'sha256:'+'a'.repeat(64)}};
+ for(const change of [{},{resourceScope:[]},{resourceScope:['OTHER']},{resourceScope:['R1','R1']},{resourceScope:undefined},{kind:'proposalGeneration'},{receipt:{...valid.receipt,decisionId:'OTHER'}},{receipt:{...valid.receipt,decisionType:'partiallyAccept'}},{receipt:{...valid.receipt,decisionCommandDigest:null}}]){
+  const adapter=createConfiguredAdapter(parseConfig(env),{fetchImpl:async()=>({status:200,json:async()=>({...valid,...change})})});
+  const result=await adapter.call({command:'read_receipt',payload_json:'{"operationId":"ORIGINAL"}'});assert.equal(result.ok,Object.keys(change).length===0);
+ }
+ let requests=0;const adapter=createConfiguredAdapter(parseConfig(env),{fetchImpl:async()=>{requests++;throw Error('must not dispatch');}});
+ assert.equal((await adapter.call({command:'adopt_proposal',payload_json:'{}'})).code,'TRUSTED_CONVERSATION_INTERFACE_REQUIRED');
+ assert.equal((await adapter.call({command:'generate_proposal',payload_json:'{"resourceScope":["OTHER"]}'})).code,'FORBIDDEN');assert.equal(requests,0);
 });

@@ -2,3 +2,10 @@ const test=require('node:test'),assert=require('node:assert/strict');const {crea
 const binding={endpoint:'http://127.0.0.1:1/api/v2/agent/tools',token:'SYNTHETIC-ASSISTANT'.padEnd(40,'x')};
 test('unstructured or server-failed mutation response is unknown and never retried',async()=>{for(const response of [{status:200,json:async()=>({unexpected:true})},{status:503,json:async()=>({ok:false,code:'SERVICE_ERROR'})}]){let calls=0;const adapter=createAgentAdapter({...binding,fetchImpl:async()=>{calls++;return response;}});assert.equal((await adapter.call({command:'reschedule',payload_json:'{}'})).code,'RESULT_UNKNOWN');assert.equal(calls,1);}});
 test('model cannot add credential/approval fields or change endpoint origin',async()=>{let calls=0;const adapter=createAgentAdapter({...binding,fetchImpl:async()=>{calls++;throw Error('unexpected')}});assert.equal((await adapter.call({command:'reschedule',payload_json:'{}',ownerToken:'forged'})).code,'INVALID_AGENT_ARGUMENTS');assert.equal(calls,0);assert.throws(()=>createAgentAdapter({...binding,endpoint:'https://example.com/api/v2/agent/tools'}),/LOCAL_AGENT_BINDING_INVALID/);});
+
+test('adoption failures remain unknown and never retry, including timeout and malformed success',async()=>{
+ for(const response of [{status:503,json:async()=>({ok:false,code:'SERVICE_UNAVAILABLE'})},{status:200,json:async()=>({unexpected:true})},null]){
+  let calls=0;const adapter=createAgentAdapter({...binding,fetchImpl:async()=>{calls++;if(!response)throw Error('synthetic timeout');return response;}});
+  assert.equal((await adapter.call({command:'adopt_proposal',payload_json:'{}'})).code,'RESULT_UNKNOWN');assert.equal(calls,1);
+ }
+});
